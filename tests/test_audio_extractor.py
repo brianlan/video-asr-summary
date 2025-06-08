@@ -1,5 +1,6 @@
 """Tests for audio processing components."""
 
+import subprocess
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -219,6 +220,42 @@ class TestFFmpegAudioExtractor:
                 
                 with pytest.raises(RuntimeError, match="Audio extraction failed"):
                     self.extractor.extract_audio(self.test_video_path, self.test_audio_path)
+    
+    def test_extract_audio_chunks_interface(self):
+        """Test that the chunked extraction interface exists and has proper signature."""
+        # Test that the method exists and can be called (will fail due to missing video)
+        with pytest.raises((FileNotFoundError, RuntimeError)):
+            self.extractor.extract_audio_chunks(
+                video_path=Path("nonexistent.mp4"),
+                output_dir=Path("/tmp"),
+                chunk_duration_seconds=5.0
+            )
+
+    def test_get_video_duration(self):
+        """Test video duration detection with ffprobe."""
+        self.test_video_path.touch()
+        
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = "123.45\n"
+            
+            duration = self.extractor._get_video_duration(self.test_video_path)
+            
+            assert duration == 123.45
+            mock_run.assert_called_once()
+            args = mock_run.call_args[0][0]
+            assert 'ffprobe' in args
+            assert str(self.test_video_path) in args
+
+    def test_get_video_duration_fails(self):
+        """Test video duration detection failure."""
+        self.test_video_path.touch()
+        
+        with patch('subprocess.run') as mock_run:
+            mock_run.side_effect = subprocess.CalledProcessError(1, 'ffprobe')
+            
+            with pytest.raises(RuntimeError, match="Failed to get video duration"):
+                self.extractor._get_video_duration(self.test_video_path)
 
 
 class TestAudioExtractorInterface:
