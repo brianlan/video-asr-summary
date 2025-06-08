@@ -7,7 +7,10 @@ A modular video processing pipeline that extracts audio from video files, perfor
 - 🎥 Video file processing and metadata extraction
 - 🎵 Advanced audio extraction with FFmpeg (speech-optimized settings)
 - 📊 Support for chunked processing of long videos
-- 🎤 Automatic Speech Recognition (ASR) using state-of-the-art models
+- 🎤 Automatic Speech Recognition (ASR) using MLX Whisper (local processing)
+- 🌐 Multi-language support (English and Chinese with auto-detection)
+- ⚡ High-performance speech recognition with confidence scoring
+- 🎯 Structured output with timestamps and segment-level confidence
 - 📝 Intelligent text summarization
 - 🧪 Test-driven development with comprehensive test coverage
 - 🏗️ Modular architecture with low coupling and high cohesion
@@ -41,6 +44,9 @@ pip install -r requirements.txt
 brew install ffmpeg
 # Ubuntu/Debian:
 sudo apt install ffmpeg
+
+# Note: MLX Whisper is automatically installed with requirements.txt
+# and provides fast local speech recognition on Apple Silicon
 ```
 
 ### Basic Audio Extraction
@@ -56,6 +62,63 @@ audio_data = extract_audio_for_speech_recognition(
 )
 
 print(f"Extracted {audio_data.duration_seconds:.2f}s of audio")
+```
+
+### Speech Recognition
+
+```python
+from video_asr_summary.asr import WhisperProcessor
+from pathlib import Path
+
+# Initialize ASR processor
+processor = WhisperProcessor(language="en")  # or "zh" for Chinese, None for auto-detect
+
+# Transcribe audio file
+result = processor.transcribe(Path("speech_audio.wav"))
+
+print(f"Transcribed text: {result.text}")
+print(f"Language detected: {result.language}")
+print(f"Confidence: {result.confidence:.2f}")
+print(f"Processing time: {result.processing_time_seconds:.2f}s")
+
+# Access detailed segments with timestamps
+for i, segment in enumerate(result.segments):
+    start = segment['start']
+    end = segment['end']
+    text = segment['text']
+    print(f"[{start:.1f}s - {end:.1f}s] {text}")
+```
+
+### Complete Video-to-Text Pipeline
+
+```python
+from video_asr_summary.audio import FFmpegAudioExtractor
+from video_asr_summary.asr import WhisperProcessor
+from pathlib import Path
+import tempfile
+
+def process_video_to_text(video_path: Path, language: str = 'en'):
+    # Extract audio optimized for speech recognition
+    extractor = FFmpegAudioExtractor()
+    temp_audio = Path(tempfile.mkdtemp()) / 'audio.wav'
+    
+    audio_data = extractor.extract_audio(
+        video_path, temp_audio, 
+        sample_rate=16000, channels=1  # Optimal for ASR
+    )
+    
+    # Transcribe audio
+    processor = WhisperProcessor(language=language)
+    result = processor.transcribe(audio_data.file_path)
+    
+    # Cleanup
+    temp_audio.unlink(missing_ok=True)
+    
+    return result
+
+# Use the pipeline
+transcription = process_video_to_text(Path("video.mp4"), language="en")
+print(transcription.text)
 ```
 
 ### Chunked Processing for Long Videos
@@ -78,18 +141,27 @@ chunks = extractor.extract_audio_chunks(
 print(f"Created {len(chunks)} audio chunks for processing")
 ```
 
-### Example Demo
+### Example Demos
 
-Run the included demo script to see audio extraction capabilities:
+Run the included demo scripts:
 
 ```bash
+# Audio extraction demo
 python examples/audio_processing_demo.py path/to/your/video.mp4
+
+# ASR processing demo  
+python examples/asr_demo.py
+
+# Complete video-to-text pipeline demo
+python examples/video_to_text_demo.py
 ```
 
-This will demonstrate:
+These demonstrate:
 - Speech-optimized audio extraction
 - Chunked processing for long videos  
-- Custom extraction settings
+- Local speech recognition with MLX Whisper
+- Confidence scoring and timestamp extraction
+- Multi-language support (English/Chinese)
 
 ## Development
 
@@ -111,11 +183,13 @@ python -m pytest    # If you prefer direct pytest
 
 ### Current Status
 - ✅ Core data models and interfaces
-- ✅ Video processing (OpenCV-based)
+- ✅ Video processing (OpenCV-based)  
 - ✅ Audio extraction (FFmpeg-based) with chunked processing support
-- 🚧 ASR processing (in development)
+- ✅ ASR processing (MLX Whisper with multi-language support)
 - 🚧 Text summarization (planned)
 - 🚧 Pipeline orchestration (planned)
+- 🚧 Speaker diarization (planned)
+- 🚧 Cross-validation with multiple ASR services (planned)
 
 ### Code Quality
 ```bash
