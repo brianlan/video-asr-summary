@@ -194,32 +194,13 @@ class TestFFmpegAudioExtractor:
         """Test when ffmpeg succeeds but output file is not created."""
         self.test_video_path.touch()
         
-        # Mock subprocess to succeed
+        # Mock subprocess to succeed but don't create output file
         with patch('subprocess.run') as mock_run:
             mock_run.return_value.returncode = 0
             
-            # Mock Path.exists at the module level
-            with patch('video_asr_summary.audio.extractor.Path') as mock_path_cls:
-                # Create mock path instances
-                mock_video_path = Mock()
-                mock_video_path.exists.return_value = True
-                mock_audio_path = Mock()
-                mock_audio_path.exists.return_value = False  # Output file not created
-                
-                # Configure the Path constructor to return the appropriate mock
-                def path_constructor(path_str):
-                    if str(path_str) == str(self.test_video_path):
-                        return mock_video_path
-                    elif str(path_str) == str(self.test_audio_path):
-                        return mock_audio_path
-                    else:
-                        # Return a real Path for other cases
-                        return Path(path_str)
-                
-                mock_path_cls.side_effect = path_constructor
-                
-                with pytest.raises(RuntimeError, match="Audio extraction failed"):
-                    self.extractor.extract_audio(self.test_video_path, self.test_audio_path)
+            # Don't create the actual output file, so the exists check will fail
+            with pytest.raises(RuntimeError, match="Audio extraction failed"):
+                self.extractor.extract_audio(self.test_video_path, self.test_audio_path)
     
     def test_extract_audio_chunks_interface(self):
         """Test that the chunked extraction interface exists and has proper signature."""
