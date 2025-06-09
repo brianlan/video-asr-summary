@@ -3,8 +3,8 @@
 Test the full integrated pipeline: ASR + Diarization on Chinese audio.
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
 
 # Add project root to path
@@ -12,8 +12,8 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from video_asr_summary.asr.whisper_processor import WhisperProcessor
-from video_asr_summary.diarization.pyannote_processor import PyannoteAudioProcessor
 from video_asr_summary.diarization.integrator import SegmentBasedIntegrator
+from video_asr_summary.diarization.pyannote_processor import PyannoteAudioProcessor
 
 
 def test_full_pipeline():
@@ -39,13 +39,17 @@ def test_full_pipeline():
 
         print(f"✅ ASR completed: {len(asr_result.segments)} segments")
         print(f"   Total duration: {asr_result.segments[-1]['end']:.1f}s")
-        avg_confidence = sum(seg.get('avg_logprob', 0) for seg in asr_result.segments) / len(asr_result.segments)
+        avg_confidence = sum(
+            seg.get("avg_logprob", 0) for seg in asr_result.segments
+        ) / len(asr_result.segments)
         print(f"   Average confidence: {avg_confidence:.3f}")
 
         # Show first few ASR segments
         print("\n📝 First 3 ASR segments:")
         for i, seg in enumerate(asr_result.segments[:3]):
-            print(f"   [{seg['start']:6.1f}s - {seg['end']:6.1f}s] {seg['text'][:50]}...")
+            print(
+                f"   [{seg['start']:6.1f}s - {seg['end']:6.1f}s] {seg['text'][:50]}..."
+            )
 
     except Exception as e:
         print(f"❌ ASR failed: {e}")
@@ -70,9 +74,13 @@ def test_full_pipeline():
         speakers = set(s.speaker for s in diarization_result.segments)
         print("\n👥 Speaker breakdown:")
         for speaker in sorted(speakers):
-            speaker_segments = [s for s in diarization_result.segments if s.speaker == speaker]
+            speaker_segments = [
+                s for s in diarization_result.segments if s.speaker == speaker
+            ]
             total_time = sum(s.end - s.start for s in speaker_segments)
-            print(f"   {speaker}: {len(speaker_segments)} segments, {total_time:.1f}s total")
+            print(
+                f"   {speaker}: {len(speaker_segments)} segments, {total_time:.1f}s total"
+            )
 
     except Exception as e:
         print(f"❌ Diarization failed: {e}")
@@ -85,25 +93,31 @@ def test_full_pipeline():
         integrator = SegmentBasedIntegrator()
         enhanced_result = integrator.integrate(asr_result, diarization_result)
 
-        print(f"✅ Integration completed: {len(enhanced_result.speaker_attributed_segments)} enhanced segments")
+        print(
+            f"✅ Integration completed: {len(enhanced_result.speaker_attributed_segments)} enhanced segments"
+        )
 
         # Show integrated results
         print("\n🎯 First 5 integrated segments (WHO said WHAT WHEN):")
         for i, seg in enumerate(enhanced_result.speaker_attributed_segments[:5]):
             speaker_text = f"[{seg.get('speaker', 'Unknown')}]"
-            start_time = seg.get('start', 0)
-            end_time = seg.get('end', 0)
-            text = seg.get('text', '')
-            confidence = seg.get('confidence', 0)
+            start_time = seg.get("start", 0)
+            end_time = seg.get("end", 0)
+            text = seg.get("text", "")
+            confidence = seg.get("confidence", 0)
 
             print(f"   [{start_time:6.1f}s - {end_time:6.1f}s] {speaker_text}")
-            print(f"      \"{text[:60]}...\" (conf: {confidence:.2f})")
+            print(f'      "{text[:60]}..." (conf: {confidence:.2f})')
 
         # Summary stats
         print("\n📊 Integration Summary:")
         total_segments = len(enhanced_result.speaker_attributed_segments)
-        segments_with_speaker = len([s for s in enhanced_result.speaker_attributed_segments if s.get('speaker')])
-        speaker_coverage = segments_with_speaker / total_segments * 100 if total_segments > 0 else 0
+        segments_with_speaker = len(
+            [s for s in enhanced_result.speaker_attributed_segments if s.get("speaker")]
+        )
+        speaker_coverage = (
+            segments_with_speaker / total_segments * 100 if total_segments > 0 else 0
+        )
 
         print(f"   Total segments: {total_segments}")
         print(f"   Segments with speaker info: {segments_with_speaker}")
@@ -114,6 +128,7 @@ def test_full_pipeline():
     except Exception as e:
         print(f"❌ Integration failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 

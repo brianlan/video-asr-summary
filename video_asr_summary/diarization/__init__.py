@@ -1,6 +1,6 @@
 """Speaker diarization processors."""
 
-from .pyannote_processor import PyannoteAudioProcessor
 from .integrator import SegmentBasedIntegrator
+from .pyannote_processor import PyannoteAudioProcessor
 
 __all__ = ["PyannoteAudioProcessor", "SegmentBasedIntegrator"]
