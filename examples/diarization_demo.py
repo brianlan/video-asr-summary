@@ -80,7 +80,7 @@ def demo_diarization_pipeline(video_path: str, hf_token: Optional[str] = None):
         
         # Step 3: Perform speaker diarization
         logger.info("Step 3: Performing speaker diarization...")
-        diarization_processor = PyannoteAudioProcessor(auth_token=hf_token)
+        diarization_processor = PyannoteAudioProcessor(auth_token=hf_token, device="auto")
         diarization = diarization_processor.diarize(audio_path)
         
         logger.info("Diarization completed:")

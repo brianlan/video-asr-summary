@@ -28,6 +28,7 @@ def test_full_pipeline():
         return False
     
     print(f"📁 Audio file: {audio_file}")
+    print(f"📊 File size: {os.path.getsize(audio_file) / 1024 / 1024:.1f} MB")
     
     # Step 1: ASR with Whisper
     print("\n🎤 Step 1: Whisper ASR")
@@ -59,7 +60,7 @@ def test_full_pipeline():
             print("❌ No Hugging Face token found")
             return False
             
-        pyannote = PyannoteAudioProcessor(auth_token=auth_token)
+        pyannote = PyannoteAudioProcessor(auth_token=auth_token, device="auto")
         diarization_result = pyannote.diarize(Path(audio_file))
         
         print(f"✅ Diarization completed: {diarization_result.num_speakers} speakers")
