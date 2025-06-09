@@ -2,14 +2,14 @@
 
 from .extractor import (
     AudioExtractor,
-    FFmpegAudioExtractor,
     AudioExtractorFactory,
+    FFmpegAudioExtractor,
     extract_audio_for_speech_recognition,
 )
 
 __all__ = [
     "AudioExtractor",
-    "FFmpegAudioExtractor", 
+    "FFmpegAudioExtractor",
     "AudioExtractorFactory",
     "extract_audio_for_speech_recognition",
 ]
