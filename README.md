@@ -11,7 +11,9 @@ A modular video processing pipeline that extracts audio from video files, perfor
 - 🌐 Multi-language support (English and Chinese with auto-detection)
 - ⚡ High-performance speech recognition with confidence scoring
 - 🎯 Structured output with timestamps and segment-level confidence
-- 📝 Intelligent text summarization
+- � Speaker diarization using pyannote.audio (identifies "who spoke when")
+- 🔗 Intelligent integration of ASR and diarization results
+- �📝 Intelligent text summarization
 - 🧪 Test-driven development with comprehensive test coverage
 - 🏗️ Modular architecture with low coupling and high cohesion
 - 📦 Easy installation and CLI interface
@@ -26,6 +28,7 @@ video_asr_summary/
 ├── video/          # Video processing (OpenCV-based)
 ├── audio/          # Audio extraction (FFmpeg-based)
 ├── asr/            # Speech recognition components
+├── diarization/    # Speaker diarization and ASR integration
 ├── summarization/  # Text summarization components
 ├── pipeline/       # Pipeline orchestration
 └── cli/            # Command-line interface
@@ -47,6 +50,12 @@ sudo apt install ffmpeg
 
 # Note: MLX Whisper is automatically installed with requirements.txt
 # and provides fast local speech recognition on Apple Silicon
+
+# For speaker diarization, you'll need a Hugging Face access token:
+# 1. Sign up at https://huggingface.co/
+# 2. Go to https://huggingface.co/settings/tokens
+# 3. Create a new token with read access
+# 4. Set the token: export HUGGINGFACE_TOKEN=your_token_here
 ```
 
 ### Basic Audio Extraction
@@ -141,6 +150,63 @@ chunks = extractor.extract_audio_chunks(
 print(f"Created {len(chunks)} audio chunks for processing")
 ```
 
+### Speaker Diarization and Enhanced Transcription
+
+The pipeline supports speaker diarization to identify "who spoke when" in your audio/video:
+
+```python
+from video_asr_summary.audio import FFmpegAudioExtractor
+from video_asr_summary.asr import WhisperProcessor
+from video_asr_summary.diarization import PyannoteAudioProcessor, SegmentBasedIntegrator
+from pathlib import Path
+import os
+
+def process_video_with_speakers(video_path: Path, hf_token: str):
+    # Step 1: Extract audio
+    extractor = FFmpegAudioExtractor()
+    audio_path = video_path.parent / f"{video_path.stem}_audio.wav"
+    audio_data = extractor.extract_audio(video_path, audio_path)
+    
+    # Step 2: Perform ASR
+    whisper = WhisperProcessor()
+    transcription = whisper.transcribe(audio_path)
+    
+    # Step 3: Perform speaker diarization
+    diarization_processor = PyannoteAudioProcessor(auth_token=hf_token)
+    diarization = diarization_processor.diarize(audio_path)
+    
+    # Step 4: Integrate ASR and diarization
+    integrator = SegmentBasedIntegrator(overlap_threshold=0.5)
+    enhanced_result = integrator.integrate(transcription, diarization)
+    
+    # Print speaker-attributed transcript
+    for segment in enhanced_result.speaker_attributed_segments:
+        start = segment.get('start', 0.0)
+        end = segment.get('end', 0.0)
+        text = segment.get('text', '').strip()
+        speaker = segment.get('speaker', 'UNKNOWN')
+        confidence = segment.get('speaker_confidence', 0.0)
+        
+        if text:
+            print(f"{start:6.1f}-{end:5.1f}s [{speaker}] ({confidence:.2f}): {text}")
+    
+    # Cleanup
+    audio_path.unlink(missing_ok=True)
+    return enhanced_result
+
+# Usage (requires Hugging Face token)
+hf_token = os.getenv("HUGGINGFACE_TOKEN")
+result = process_video_with_speakers(Path("meeting.mp4"), hf_token)
+```
+
+This provides:
+- Speaker identification and labeling (SPEAKER_00, SPEAKER_01, etc.)
+- Confidence scores for speaker assignments
+- Perfect alignment between transcript segments and speakers
+- Preservation of original ASR results for reference
+
+```
+
 ### Example Demos
 
 Run the included demo scripts:
@@ -154,6 +220,10 @@ python examples/asr_demo.py
 
 # Complete video-to-text pipeline demo
 python examples/video_to_text_demo.py
+
+# Speaker diarization demo (requires Hugging Face token)
+export HUGGINGFACE_TOKEN=your_token_here
+python examples/diarization_demo.py path/to/your/video.mp4
 ```
 
 These demonstrate:
@@ -162,6 +232,8 @@ These demonstrate:
 - Local speech recognition with MLX Whisper
 - Confidence scoring and timestamp extraction
 - Multi-language support (English/Chinese)
+- Speaker diarization with pyannote.audio
+- Integration of ASR and diarization results
 
 ## Development
 
@@ -186,9 +258,10 @@ python -m pytest    # If you prefer direct pytest
 - ✅ Video processing (OpenCV-based)  
 - ✅ Audio extraction (FFmpeg-based) with chunked processing support
 - ✅ ASR processing (MLX Whisper with multi-language support)
+- ✅ Speaker diarization (pyannote.audio integration)
+- ✅ ASR-diarization integration with confidence scoring
 - 🚧 Text summarization (planned)
 - 🚧 Pipeline orchestration (planned)
-- 🚧 Speaker diarization (planned)
 - 🚧 Cross-validation with multiple ASR services (planned)
 
 ### Code Quality
