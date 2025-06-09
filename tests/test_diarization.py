@@ -92,7 +92,7 @@ class TestEnhancedTranscriptionResult:
                 "end": 2.0, 
                 "text": "Hello world",
                 "speaker": "SPEAKER_00",
-                "speaker_confidence": 1.0
+                "confidence": 1.0
             }]
         )
         
@@ -120,22 +120,16 @@ class TestPyannoteAudioProcessor:
         """Test successful pipeline loading."""
         mock_pipeline = MagicMock()
         
-        with patch('builtins.__import__') as mock_import:
-            # Mock the pyannote.audio import
-            mock_module = MagicMock()
-            mock_module.Pipeline.from_pretrained.return_value = mock_pipeline
+        with patch('torch.backends.mps.is_available', return_value=False), \
+             patch('torch.cuda.is_available', return_value=False), \
+             patch('pyannote.audio.Pipeline.from_pretrained', return_value=mock_pipeline):
             
-            def side_effect(name, *args, **kwargs):
-                if name == 'pyannote.audio':
-                    return mock_module
-                return __import__(name, *args, **kwargs)
-            
-            mock_import.side_effect = side_effect
-            
-            processor = PyannoteAudioProcessor("test_token")
+            processor = PyannoteAudioProcessor("test_token", device="cpu")
             processor._load_pipeline()
             
-            mock_module.Pipeline.from_pretrained.assert_called_once_with(
+            # Check that from_pretrained was called correctly
+            from pyannote.audio import Pipeline
+            Pipeline.from_pretrained.assert_called_once_with(
                 "pyannote/speaker-diarization-3.1",
                 use_auth_token="test_token"
             )
@@ -143,15 +137,11 @@ class TestPyannoteAudioProcessor:
     
     def test_load_pipeline_import_error(self):
         """Test pipeline loading with import error."""
-        with patch('builtins.__import__') as mock_import:
-            def side_effect(name, *args, **kwargs):
-                if name == 'pyannote.audio':
-                    raise ImportError("Module not found")
-                return __import__(name, *args, **kwargs)
+        with patch('torch.backends.mps.is_available', return_value=False), \
+             patch('torch.cuda.is_available', return_value=False), \
+             patch('pyannote.audio.Pipeline.from_pretrained', side_effect=ImportError("pyannote.audio is not installed")):
             
-            mock_import.side_effect = side_effect
-            
-            processor = PyannoteAudioProcessor("test_token")
+            processor = PyannoteAudioProcessor("test_token", device="cpu")
             
             with pytest.raises(ImportError, match="pyannote.audio is not installed"):
                 processor._load_pipeline()
@@ -182,19 +172,11 @@ class TestPyannoteAudioProcessor:
             temp_path = Path(temp_file.name)
         
         try:
-            with patch('builtins.__import__') as mock_import:
-                # Mock the pyannote.audio import
-                mock_module = MagicMock()
-                mock_module.Pipeline.from_pretrained.return_value = mock_pipeline
+            with patch('torch.backends.mps.is_available', return_value=False), \
+                 patch('torch.cuda.is_available', return_value=False), \
+                 patch('pyannote.audio.Pipeline.from_pretrained', return_value=mock_pipeline):
                 
-                def side_effect(name, *args, **kwargs):
-                    if name == 'pyannote.audio':
-                        return mock_module
-                    return __import__(name, *args, **kwargs)
-                
-                mock_import.side_effect = side_effect
-                
-                processor = PyannoteAudioProcessor("test_token")
+                processor = PyannoteAudioProcessor("test_token", device="cpu")
                 result = processor.diarize(temp_path)
                 
                 assert isinstance(result, DiarizationResult)
@@ -218,19 +200,11 @@ class TestPyannoteAudioProcessor:
             temp_path = Path(temp_file.name)
         
         try:
-            with patch('builtins.__import__') as mock_import:
-                # Mock the pyannote.audio import
-                mock_module = MagicMock()
-                mock_module.Pipeline.from_pretrained.return_value = mock_pipeline
+            with patch('torch.backends.mps.is_available', return_value=False), \
+                 patch('torch.cuda.is_available', return_value=False), \
+                 patch('pyannote.audio.Pipeline.from_pretrained', return_value=mock_pipeline):
                 
-                def side_effect(name, *args, **kwargs):
-                    if name == 'pyannote.audio':
-                        return mock_module
-                    return __import__(name, *args, **kwargs)
-                
-                mock_import.side_effect = side_effect
-                
-                processor = PyannoteAudioProcessor("test_token")
+                processor = PyannoteAudioProcessor("test_token", device="cpu")
                 processor.diarize(temp_path, num_speakers=2)
                 
                 # Verify that min/max speakers were passed
@@ -290,12 +264,12 @@ class TestSegmentBasedIntegrator:
         # Check first segment (should match SPEAKER_00)
         seg1 = result.speaker_attributed_segments[0]
         assert seg1["speaker"] == "SPEAKER_00"
-        assert seg1["speaker_confidence"] == 1.0  # Perfect overlap
+        assert seg1["confidence"] == 1.0  # Perfect overlap
         
         # Check second segment (should match SPEAKER_01)
         seg2 = result.speaker_attributed_segments[1]
         assert seg2["speaker"] == "SPEAKER_01"
-        assert seg2["speaker_confidence"] == 1.0  # Perfect overlap
+        assert seg2["confidence"] == 1.0  # Perfect overlap
     
     def test_integrate_no_overlap(self):
         """Test integration with no overlapping segments."""
@@ -316,7 +290,7 @@ class TestSegmentBasedIntegrator:
         # Should have no speaker assigned due to no overlap
         seg = result.speaker_attributed_segments[0]
         assert seg["speaker"] is None
-        assert seg["speaker_confidence"] == 0.0
+        assert seg["confidence"] == 0.0
     
     def test_integrate_partial_overlap_below_threshold(self):
         """Test integration with partial overlap below threshold."""
@@ -337,7 +311,7 @@ class TestSegmentBasedIntegrator:
         
         seg = result.speaker_attributed_segments[0]
         assert seg["speaker"] is None
-        assert seg["speaker_confidence"] == 0.25  # 25% overlap
+        assert seg["confidence"] == 0.25  # 25% overlap
     
     def test_integrate_invalid_segment_timing(self):
         """Test integration with invalid segment timing."""
@@ -354,7 +328,7 @@ class TestSegmentBasedIntegrator:
         
         seg = result.speaker_attributed_segments[0]
         assert seg["speaker"] is None
-        assert seg["speaker_confidence"] == 0.0
+        assert seg["confidence"] == 0.0
     
     def test_find_best_speaker_multiple_candidates(self):
         """Test finding best speaker among multiple candidates."""

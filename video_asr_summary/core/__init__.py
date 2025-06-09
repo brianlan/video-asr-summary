@@ -66,6 +66,8 @@ class EnhancedTranscriptionResult:
     
     transcription: TranscriptionResult
     diarization: DiarizationResult
+    # Each dict contains: 'start', 'end', 'text', 'speaker', 'confidence'
+    # where 'speaker' is Optional[str] and 'confidence' is float (0.0-1.0)
     speaker_attributed_segments: List[Dict[str, Any]]  # Segments with speaker info
     processing_time_seconds: Optional[float] = None
 

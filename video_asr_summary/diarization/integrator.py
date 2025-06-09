@@ -54,12 +54,15 @@ class SegmentBasedIntegrator(ASRDiarizationIntegrator):
                 segment_start = segment.get('start', 0.0)
                 segment_end = segment.get('end', 0.0)
                 
+                # Skip segments with invalid timing (start >= end)
+                # This can happen with very short segments or transcription errors
+                # We preserve the segment but mark it as having no speaker attribution
                 if segment_start >= segment_end:
                     logger.warning(f"Invalid segment timing: {segment_start}-{segment_end}")
                     # Add segment without speaker attribution
                     enhanced_segment = segment.copy()
                     enhanced_segment['speaker'] = None
-                    enhanced_segment['speaker_confidence'] = 0.0
+                    enhanced_segment['confidence'] = 0.0
                     speaker_attributed_segments.append(enhanced_segment)
                     continue
                 
@@ -71,7 +74,7 @@ class SegmentBasedIntegrator(ASRDiarizationIntegrator):
                 # Create enhanced segment
                 enhanced_segment = segment.copy()
                 enhanced_segment['speaker'] = best_speaker
-                enhanced_segment['speaker_confidence'] = confidence
+                enhanced_segment['confidence'] = confidence
                 
                 speaker_attributed_segments.append(enhanced_segment)
             
@@ -103,13 +106,19 @@ class SegmentBasedIntegrator(ASRDiarizationIntegrator):
         """
         Find the best matching speaker for a transcription segment.
         
+        Uses temporal overlap analysis to match transcription segments with
+        speaker segments. The overlap ratio is calculated as:
+        overlap_duration / transcription_segment_duration
+        
         Args:
             segment_start: Start time of transcription segment
             segment_end: End time of transcription segment
             speaker_segments: List of speaker segments from diarization
             
         Returns:
-            Tuple of (speaker_id, confidence_score)
+            Tuple of (speaker_id, confidence_score) where:
+            - speaker_id: ID of best matching speaker, None if no good match
+            - confidence_score: Overlap ratio (0.0-1.0), higher = better match
         """
         if not speaker_segments:
             return None, 0.0
@@ -123,13 +132,16 @@ class SegmentBasedIntegrator(ASRDiarizationIntegrator):
         
         # Check overlap with each speaker segment
         for speaker_segment in speaker_segments:
+            # Calculate temporal overlap between transcription and speaker segments
             overlap_start = max(segment_start, speaker_segment.start)
             overlap_end = min(segment_end, speaker_segment.end)
             
             if overlap_start < overlap_end:
                 overlap_duration = overlap_end - overlap_start
+                # Overlap ratio = how much of the transcription segment is covered
                 overlap_ratio = overlap_duration / segment_duration
                 
+                # Track the speaker with the highest overlap ratio
                 if overlap_ratio > best_overlap_ratio:
                     best_overlap_ratio = overlap_ratio
                     best_speaker = speaker_segment.speaker
