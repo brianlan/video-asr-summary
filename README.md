@@ -276,6 +276,16 @@ flake8 video_asr_summary/ tests/ examples/
 mypy video_asr_summary/
 ```
 
+## Console Warnings
+
+During audio processing, you may see various warnings in the console. These are normal and safe to ignore:
+
+- **PyTorch std() warnings** - Numerical stability warnings from pyannote.audio
+- **TorchAudio MPEG_LAYER_III warnings** - MP3 metadata compatibility issues  
+- **libmpg123 layer3 errors** - Low-level MP3 frame decoding issues
+
+All warnings are handled gracefully by the underlying libraries and do not affect processing quality. For detailed analysis, see [docs/warnings_analysis.md](docs/warnings_analysis.md).
+
 ## License
 
 MIT License
