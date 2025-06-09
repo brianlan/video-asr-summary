@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 from datetime import datetime
 
 
@@ -31,6 +31,25 @@ class AudioData:
 
 
 @dataclass
+class SpeakerSegment:
+    """A segment of audio attributed to a specific speaker."""
+    
+    start: float  # Start time in seconds
+    end: float    # End time in seconds
+    speaker: str  # Speaker identifier (e.g., "SPEAKER_00", "SPEAKER_01")
+    confidence: float = 1.0  # Confidence score for speaker assignment
+
+
+@dataclass
+class DiarizationResult:
+    """Result of speaker diarization."""
+    
+    segments: List[SpeakerSegment]
+    num_speakers: int
+    processing_time_seconds: Optional[float] = None
+
+
+@dataclass
 class TranscriptionResult:
     """Result of speech recognition."""
     
@@ -38,6 +57,18 @@ class TranscriptionResult:
     confidence: float
     segments: list[Dict[str, Any]]
     language: Optional[str] = None
+    processing_time_seconds: Optional[float] = None
+
+
+@dataclass
+class EnhancedTranscriptionResult:
+    """Transcription result enhanced with speaker information."""
+    
+    transcription: TranscriptionResult
+    diarization: DiarizationResult
+    # Each dict contains: 'start', 'end', 'text', 'speaker', 'confidence'
+    # where 'speaker' is Optional[str] and 'confidence' is float (0.0-1.0)
+    speaker_attributed_segments: List[Dict[str, Any]]  # Segments with speaker info
     processing_time_seconds: Optional[float] = None
 
 
@@ -84,6 +115,28 @@ class ASRProcessor(ABC):
     @abstractmethod
     def transcribe(self, audio_path: Path) -> TranscriptionResult:
         """Transcribe audio to text."""
+        pass
+
+
+class SpeakerDiarizationProcessor(ABC):
+    """Abstract base class for speaker diarization."""
+    
+    @abstractmethod
+    def diarize(self, audio_path: Path, num_speakers: Optional[int] = None) -> DiarizationResult:
+        """Perform speaker diarization on audio."""
+        pass
+
+
+class ASRDiarizationIntegrator(ABC):
+    """Abstract base class for integrating ASR and diarization results."""
+    
+    @abstractmethod
+    def integrate(
+        self, 
+        transcription: TranscriptionResult, 
+        diarization: DiarizationResult
+    ) -> EnhancedTranscriptionResult:
+        """Integrate transcription and diarization results."""
         pass
 
 
