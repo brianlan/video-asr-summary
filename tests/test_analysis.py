@@ -235,7 +235,8 @@ class TestDefaultContentAnalyzer:
             overall_credibility="medium",
             key_insights=[],
             potential_biases=[],
-            factual_claims=[]
+            factual_claims=[],
+            response_language="en"
         )
         mock_llm.analyze.return_value = expected_result
         
@@ -248,7 +249,7 @@ class TestDefaultContentAnalyzer:
         # Verify
         assert result == expected_result
         mock_template_manager.get_template.assert_called_once_with(ContentType.POLITICAL_COMMENTARY)
-        mock_llm.analyze.assert_called_once_with("test text", mock_template)
+        mock_llm.analyze.assert_called_once_with("test text", mock_template, "en")
         mock_classifier.classify.assert_not_called()  # Should not classify when type is provided
     
     def test_analyze_with_automatic_classification(self):
@@ -276,7 +277,8 @@ class TestDefaultContentAnalyzer:
             overall_credibility="medium",
             key_insights=[],
             potential_biases=[],
-            factual_claims=[]
+            factual_claims=[],
+            response_language="en"
         )
         mock_llm.analyze.return_value = expected_result
         
@@ -290,4 +292,43 @@ class TestDefaultContentAnalyzer:
         assert result == expected_result
         mock_classifier.classify.assert_called_once_with("test news text")
         mock_template_manager.get_template.assert_called_once_with(ContentType.NEWS_REPORT)
-        mock_llm.analyze.assert_called_once_with("test news text", mock_template)
+        mock_llm.analyze.assert_called_once_with("test news text", mock_template, "en")
+    
+    def test_analyze_with_different_language(self):
+        """Test analysis with different response language."""
+        # Create mocks
+        mock_llm = Mock()
+        mock_template_manager = Mock()
+        mock_classifier = Mock()
+        
+        # Setup mock returns
+        mock_template = PromptTemplate(
+            name="Test",
+            content_type=ContentType.POLITICAL_COMMENTARY,
+            system_prompt="Test system prompt",
+            user_prompt_template="Test {transcription}",
+            description="Test template"
+        )
+        mock_template_manager.get_template.return_value = mock_template
+        
+        expected_result = AnalysisResult(
+            content_type=ContentType.POLITICAL_COMMENTARY,
+            conclusions=[],
+            overall_credibility="medium",
+            key_insights=[],
+            potential_biases=[],
+            factual_claims=[],
+            response_language="es"
+        )
+        mock_llm.analyze.return_value = expected_result
+        
+        # Create analyzer
+        analyzer = DefaultContentAnalyzer(mock_llm, mock_template_manager, mock_classifier)
+        
+        # Test with Spanish response language
+        result = analyzer.analyze("test text", ContentType.POLITICAL_COMMENTARY, "es")
+        
+        # Verify
+        assert result == expected_result
+        assert result.response_language == "es"
+        mock_llm.analyze.assert_called_once_with("test text", mock_template, "es")

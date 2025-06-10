@@ -37,6 +37,7 @@ class AnalysisResult:
     key_insights: List[str]
     potential_biases: List[str]
     factual_claims: List[str]  # Claims that can be fact-checked
+    response_language: str = "en"  # Language of the analysis response
     processing_time_seconds: Optional[float] = None
     timestamp: Optional[datetime] = None
 
@@ -88,9 +89,16 @@ class LLMClient(ABC):
     def analyze(
         self, 
         text: str, 
-        prompt_template: PromptTemplate
+        prompt_template: PromptTemplate,
+        response_language: str = "en"
     ) -> AnalysisResult:
-        """Analyze text using LLM with given prompt template."""
+        """Analyze text using LLM with given prompt template.
+        
+        Args:
+            text: Text to analyze
+            prompt_template: Prompt template to use
+            response_language: Language for the analysis response (ISO 639-1 code)
+        """
         pass
 
 
@@ -101,7 +109,14 @@ class ContentAnalyzer(ABC):
     def analyze(
         self, 
         text: str, 
-        content_type: Optional[ContentType] = None
+        content_type: Optional[ContentType] = None,
+        response_language: str = "en"
     ) -> AnalysisResult:
-        """Analyze content and extract conclusions with supporting arguments."""
+        """Analyze content and extract conclusions with supporting arguments.
+        
+        Args:
+            text: Text content to analyze
+            content_type: Optional content type override. If None, will classify automatically
+            response_language: Language for the analysis response (ISO 639-1 code)
+        """
         pass

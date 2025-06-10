@@ -51,9 +51,41 @@ class OpenAICompatibleClient(LLMClient):
             timeout=self.timeout
         )
     
-    def analyze(self, text: str, prompt_template: PromptTemplate) -> AnalysisResult:
-        """Analyze text using LLM with given prompt template."""
+    def analyze(self, text: str, prompt_template: PromptTemplate, response_language: str = "en") -> AnalysisResult:
+        """Analyze text using LLM with given prompt template.
+        
+        Args:
+            text: Text to analyze
+            prompt_template: Prompt template to use
+            response_language: Language for the analysis response (ISO 639-1 code)
+        """
         start_time = time.time()
+        
+        # Language mapping for more natural language specification
+        language_names = {
+            "en": "English",
+            "es": "Spanish", 
+            "fr": "French",
+            "de": "German",
+            "it": "Italian",
+            "pt": "Portuguese",
+            "ru": "Russian",
+            "ja": "Japanese",
+            "ko": "Korean",
+            "zh": "Chinese",
+            "ar": "Arabic",
+            "hi": "Hindi"
+        }
+        
+        language_name = language_names.get(response_language, "English")
+        
+        # Add language instruction to system prompt
+        system_prompt_with_language = (
+            f"{prompt_template.system_prompt}\n\n"
+            f"IMPORTANT: Please provide your analysis response in {language_name}. "
+            f"All text in your response should be in {language_name}, including "
+            f"conclusions, insights, biases, and factual claims."
+        )
         
         # Format the user prompt with the transcription
         user_prompt = prompt_template.user_prompt_template.format(
@@ -65,7 +97,7 @@ class OpenAICompatibleClient(LLMClient):
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": prompt_template.system_prompt},
+                    {"role": "system", "content": system_prompt_with_language},
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=0.1,  # Low temperature for consistent analysis
@@ -85,7 +117,8 @@ class OpenAICompatibleClient(LLMClient):
             return self._create_analysis_result(
                 analysis_data, 
                 prompt_template.content_type,
-                processing_time
+                processing_time,
+                response_language
             )
             
         except json.JSONDecodeError as e:
@@ -127,7 +160,8 @@ class OpenAICompatibleClient(LLMClient):
         self, 
         data: dict, 
         content_type: ContentType,
-        processing_time: float
+        processing_time: float,
+        response_language: str = "en"
     ) -> AnalysisResult:
         """Create AnalysisResult from parsed JSON data."""
         
@@ -150,6 +184,7 @@ class OpenAICompatibleClient(LLMClient):
             key_insights=data.get("key_insights", []),
             potential_biases=data.get("potential_biases", []),
             factual_claims=data.get("factual_claims", []),
+            response_language=response_language,
             processing_time_seconds=processing_time,
             timestamp=datetime.now()
         )

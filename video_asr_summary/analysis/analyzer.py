@@ -34,13 +34,15 @@ class DefaultContentAnalyzer(ContentAnalyzer):
     def analyze(
         self, 
         text: str, 
-        content_type: Optional[ContentType] = None
+        content_type: Optional[ContentType] = None,
+        response_language: str = "en"
     ) -> AnalysisResult:
         """Analyze content and extract conclusions with supporting arguments.
         
         Args:
             text: Text content to analyze
             content_type: Optional content type override. If None, will classify automatically
+            response_language: Language for the analysis response (ISO 639-1 code)
             
         Returns:
             AnalysisResult with conclusions and supporting analysis
@@ -53,7 +55,7 @@ class DefaultContentAnalyzer(ContentAnalyzer):
         template = self.template_manager.get_template(content_type)
         
         # Perform LLM analysis
-        return self.llm_client.analyze(text, template)
+        return self.llm_client.analyze(text, template, response_language)
     
     def get_classification_confidence(self, text: str) -> dict:
         """Get classification confidence scores for debugging/transparency."""

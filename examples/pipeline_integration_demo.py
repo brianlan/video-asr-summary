@@ -26,7 +26,8 @@ def create_content_analyzer() -> DefaultContentAnalyzer:
 
 def analyze_transcription_text(
     transcription_text: str, 
-    content_type: Optional[ContentType] = None
+    content_type: Optional[ContentType] = None,
+    response_language: str = "en"
 ) -> dict:
     """
     Analyze transcription text for conclusions and supporting arguments.
@@ -34,6 +35,7 @@ def analyze_transcription_text(
     Args:
         transcription_text: The transcribed text to analyze
         content_type: Optional content type override
+        response_language: Language for the analysis response (ISO 639-1 code)
         
     Returns:
         Dictionary containing analysis results and metadata
@@ -50,13 +52,14 @@ def analyze_transcription_text(
         analyzer = create_content_analyzer()
         
         # Perform analysis
-        result = analyzer.analyze(transcription_text, content_type)
+        result = analyzer.analyze(transcription_text, content_type, response_language)
         
         # Convert to dictionary for easy serialization
         return {
             "success": True,
             "content_type": result.content_type.value,
             "overall_credibility": result.overall_credibility,
+            "response_language": result.response_language,
             "processing_time_seconds": result.processing_time_seconds,
             "conclusions": [
                 {
