@@ -166,9 +166,87 @@ Focus on:
             description="General analysis template for any content type"
         )
         
+        # Book Section Template
+        book_template = PromptTemplate(
+            name="Book Section Analysis",
+            content_type=ContentType.BOOK_SECTION,
+            system_prompt="""You are a literary and academic analyst specializing in evaluating written content from books, textbooks, and educational materials. Your goal is to identify the main arguments, theories, or concepts presented and assess their logical structure and supporting evidence.""",
+            user_prompt_template="""Please analyze the following book section transcript and provide a structured analysis:
+
+TRANSCRIPT:
+{transcription}
+
+Please provide your analysis in the following JSON format:
+{{
+    "conclusions": [
+        {{
+            "statement": "The main argument, theory, or concept presented",
+            "confidence": 0.0-1.0,
+            "supporting_arguments": ["supporting evidence 1", "example 2", "reference 3"],
+            "evidence_quality": "strong|moderate|weak|insufficient",
+            "logical_issues": ["any gaps in reasoning or unsupported claims"]
+        }}
+    ],
+    "overall_credibility": "high|medium|low",
+    "key_insights": ["main takeaway 1", "important concept 2"],
+    "potential_biases": ["author bias 1", "cultural perspective 2"],
+    "factual_claims": ["verifiable fact 1", "data claim 2"]
+}}
+
+Focus on:
+1. What main concepts, theories, or arguments are being presented
+2. How well the ideas are supported with evidence, examples, or references
+3. The logical flow and structure of the presentation
+4. Any unsupported assertions or gaps in reasoning
+5. Potential author biases or limited perspectives
+6. Factual claims that can be independently verified or cross-referenced""",
+            description="Analyzes book sections for conceptual clarity and evidence quality"
+        )
+        
+        # Personal Casual Talk Template
+        casual_template = PromptTemplate(
+            name="Personal Casual Talk Analysis",
+            content_type=ContentType.PERSONAL_CASUAL_TALK,
+            system_prompt="""You are a conversation analyst specializing in personal and casual speech. Your goal is to identify personal viewpoints, experiences, and informal reasoning patterns while being respectful of the conversational and subjective nature of the content.""",
+            user_prompt_template="""Please analyze the following casual conversation transcript and provide a structured analysis:
+
+TRANSCRIPT:
+{transcription}
+
+Please provide your analysis in the following JSON format:
+{{
+    "conclusions": [
+        {{
+            "statement": "The main personal opinion, belief, or conclusion expressed",
+            "confidence": 0.0-1.0,
+            "supporting_arguments": ["personal experience 1", "anecdotal evidence 2"],
+            "evidence_quality": "strong|moderate|weak|insufficient",
+            "logical_issues": ["overgeneralization", "anecdotal reasoning"]
+        }}
+    ],
+    "overall_credibility": "high|medium|low",
+    "key_insights": ["personal perspective 1", "life experience 2"],
+    "potential_biases": ["personal bias 1", "limited experience 2"],
+    "factual_claims": ["verifiable claim 1", "checkable statement 2"]
+}}
+
+Focus on:
+1. What personal opinions, beliefs, or conclusions are being expressed
+2. How the speaker supports their views (experience, stories, informal reasoning)
+3. The difference between personal experience and generalizable claims
+4. Common informal reasoning patterns (anecdotes, generalizations, assumptions)
+5. Personal biases or limited individual perspectives
+6. Any factual claims mixed within the personal narrative that can be verified
+
+Note: This is casual conversation analysis - be respectful of personal opinions while identifying reasoning patterns.""",
+            description="Analyzes personal conversations for viewpoints and informal reasoning patterns"
+        )
+        
         self._templates[ContentType.POLITICAL_COMMENTARY] = political_template
         self._templates[ContentType.NEWS_REPORT] = news_template
         self._templates[ContentType.TECHNICAL_REVIEW] = technical_template
+        self._templates[ContentType.BOOK_SECTION] = book_template
+        self._templates[ContentType.PERSONAL_CASUAL_TALK] = casual_template
         self._templates[ContentType.GENERAL] = general_template
     
     def get_template(self, content_type: ContentType) -> PromptTemplate:

@@ -189,3 +189,47 @@ See the docstrings in each module for detailed API documentation:
 - `video_asr_summary.analysis`: Core interfaces
 - `video_asr_summary.analysis.analyzer`: Main analyzer class
 - `video_asr_summary.analysis.llm_client`: LLM client implementation
+
+## Multi-Language Support
+
+The content analysis system supports responses in multiple languages, making it accessible to international users and enabling cross-language analysis scenarios.
+
+### Supported Languages
+
+- **English** (en) - Default
+- **Spanish** (es) 
+- **French** (fr)
+- **German** (de)
+- **Italian** (it)
+- **Portuguese** (pt)
+- **Russian** (ru)
+- **Japanese** (ja)
+- **Korean** (ko)
+- **Chinese** (zh)
+- **Arabic** (ar)
+- **Hindi** (hi)
+
+### Usage Examples
+
+```python
+# Analyze content with Spanish response
+result = analyzer.analyze(text, response_language="es")
+
+# Analyze English content but get results in Chinese
+result = analyzer.analyze(english_text, response_language="zh")
+
+# Pipeline integration with language preference
+analysis_result = analyze_transcription_text(
+    transcription_text, 
+    response_language="fr"
+)
+```
+
+### Use Cases
+
+- **International Users**: Get analysis results in your preferred language
+- **Cross-Language Analysis**: Analyze content in one language, get results in another
+- **Consistent Output**: Ensure all analysis results are in the same language regardless of input
+- **Educational Content**: Create analysis materials in specific languages
+
+## Configuration

@@ -13,6 +13,8 @@ class ContentType(Enum):
     POLITICAL_COMMENTARY = "political_commentary"
     NEWS_REPORT = "news_report"
     TECHNICAL_REVIEW = "technical_review"
+    BOOK_SECTION = "book_section"
+    PERSONAL_CASUAL_TALK = "personal_casual_talk"
     GENERAL = "general"
 
 

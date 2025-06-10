@@ -31,6 +31,20 @@ class KeywordBasedClassifier(ContentClassifier):
                 "evaluation", "assessment", "methodology", "results", "data",
                 "measurement", "testing", "specifications", "hardware", 
                 "software", "application", "system", "device", "product"
+            ],
+            ContentType.BOOK_SECTION: [
+                "chapter", "section", "book", "author", "theory", "concept",
+                "research", "study", "literature", "academic", "textbook",
+                "publication", "journal", "reference", "citation", "evidence",
+                "hypothesis", "framework", "model", "principle", "conclusion",
+                "findings", "methodology", "abstract", "introduction", "discussion"
+            ],
+            ContentType.PERSONAL_CASUAL_TALK: [
+                "I think", "I feel", "I believe", "in my opinion", "personally",
+                "my experience", "I remember", "I've noticed", "I guess", 
+                "you know", "like", "actually", "honestly", "basically",
+                "I mean", "sort of", "kind of", "probably", "maybe",
+                "my friend", "my family", "my life", "happened to me", "I've seen"
             ]
         }
     

@@ -79,6 +79,33 @@ class TestKeywordBasedClassifier:
         assert ContentType.POLITICAL_COMMENTARY in confidence_scores
         assert confidence_scores[ContentType.POLITICAL_COMMENTARY] > 0
 
+    def test_classify_book_content(self):
+        """Test classification of book section content."""
+        classifier = KeywordBasedClassifier()
+        
+        book_text = (
+            "In this chapter, the author presents a comprehensive theory "
+            "based on extensive research and academic literature. The study "
+            "methodology involved analyzing multiple journal publications "
+            "and citations to develop a conceptual framework."
+        )
+        
+        result = classifier.classify(book_text)
+        assert result == ContentType.BOOK_SECTION
+    
+    def test_classify_casual_talk_content(self):
+        """Test classification of personal casual talk content."""
+        classifier = KeywordBasedClassifier()
+        
+        casual_text = (
+            "I think this is really interesting, you know? In my experience, "
+            "I've noticed that people basically react differently. I mean, "
+            "my friend told me about something similar that happened to her family."
+        )
+        
+        result = classifier.classify(casual_text)
+        assert result == ContentType.PERSONAL_CASUAL_TALK
+
 
 class TestDefaultPromptTemplateManager:
     """Tests for prompt template manager."""
@@ -124,11 +151,13 @@ class TestDefaultPromptTemplateManager:
         manager = DefaultPromptTemplateManager()
         templates = manager.list_templates()
         
-        assert len(templates) == 4
+        assert len(templates) == 6  # Updated from 4 to 6
         content_types = [t.content_type for t in templates]
         assert ContentType.POLITICAL_COMMENTARY in content_types
         assert ContentType.NEWS_REPORT in content_types
         assert ContentType.TECHNICAL_REVIEW in content_types
+        assert ContentType.BOOK_SECTION in content_types
+        assert ContentType.PERSONAL_CASUAL_TALK in content_types
         assert ContentType.GENERAL in content_types
     
     def test_invalid_content_type(self):
