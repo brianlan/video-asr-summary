@@ -60,10 +60,7 @@ class TestKeywordBasedClassifier:
         """Test classification of general content without specific keywords."""
         classifier = KeywordBasedClassifier()
         
-        general_text = (
-            "This is a general discussion about various topics without "
-            "specific keywords that would classify it into other categories."
-        )
+        general_text = "This is ordinary content without special words."
         
         result = classifier.classify(general_text)
         assert result == ContentType.GENERAL
