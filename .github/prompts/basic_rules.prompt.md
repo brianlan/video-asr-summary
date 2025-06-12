@@ -1,5 +1,7 @@
-I'm going to implement a video processing pipeline which includes several steps.
-Before we get our hands dirty, I need to emphasize the basic rules.
+---
+mode: agent
+---
+I need to emphasize the basic rules.
 1. Always write maintainable and testable code. Keep modules low coupling and high cohension.
 2. Develop using test-driven approach.
 3. Use git / github frequently to checkpoint the progress of the development.

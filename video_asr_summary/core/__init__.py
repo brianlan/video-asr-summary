@@ -4,7 +4,10 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from video_asr_summary.analysis import AnalysisResult
 
 
 @dataclass
@@ -91,6 +94,7 @@ class PipelineResult:
     audio_data: AudioData
     transcription: TranscriptionResult
     summary: SummaryResult
+    analysis: Optional["AnalysisResult"]  # Content analysis result
     total_processing_time_seconds: float
     timestamp: datetime
 

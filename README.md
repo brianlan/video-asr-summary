@@ -11,9 +11,12 @@ A modular video processing pipeline that extracts audio from video files, perfor
 - 🌐 Multi-language support (English and Chinese with auto-detection)
 - ⚡ High-performance speech recognition with confidence scoring
 - 🎯 Structured output with timestamps and segment-level confidence
-- � Speaker diarization using pyannote.audio (identifies "who spoke when")
+- 👥 Speaker diarization using pyannote.audio (identifies "who spoke when")
 - 🔗 Intelligent integration of ASR and diarization results
-- �📝 Intelligent text summarization
+- 🤖 **LLM-based content analysis** with conclusion and argument extraction
+- 🎯 **Smart prompt templates** for Political Commentary, News Reports, Technical Reviews
+- 🔍 **Credibility assessment** and bias detection in transcribed content
+- 📝 Intelligent text summarization
 - 🧪 Test-driven development with comprehensive test coverage
 - 🏗️ Modular architecture with low coupling and high cohesion
 - 📦 Easy installation and CLI interface
@@ -29,6 +32,7 @@ video_asr_summary/
 ├── audio/          # Audio extraction (FFmpeg-based)
 ├── asr/            # Speech recognition components
 ├── diarization/    # Speaker diarization and ASR integration
+├── analysis/       # LLM-based content analysis and prompt templates
 ├── summarization/  # Text summarization components
 ├── pipeline/       # Pipeline orchestration
 └── cli/            # Command-line interface
