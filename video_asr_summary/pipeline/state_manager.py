@@ -110,8 +110,8 @@ class StateManager:
         """Save pipeline state to disk."""
         state.updated_at = datetime.now().isoformat()
         
-        with open(self.state_file, 'w') as f:
-            json.dump(state.to_dict(), f, indent=2)
+        with open(self.state_file, 'w', encoding='utf-8') as f:
+            json.dump(state.to_dict(), f, indent=2, ensure_ascii=False)
     
     def update_step(self, state: PipelineState, step_name: str) -> None:
         """Update current processing step."""
@@ -144,8 +144,8 @@ class StateManager:
         }
         
         metadata_file = self.output_dir / "audio_metadata.json"
-        with open(metadata_file, 'w') as f:
-            json.dump(audio_metadata, f, indent=2)
+        with open(metadata_file, 'w', encoding='utf-8') as f:
+            json.dump(audio_metadata, f, indent=2, ensure_ascii=False)
     
     def save_transcription(self, state: PipelineState, transcription: TranscriptionResult) -> None:
         """Save transcription result."""
@@ -161,8 +161,8 @@ class StateManager:
             "saved_at": datetime.now().isoformat()
         }
         
-        with open(state.transcription_file, 'w') as f:
-            json.dump(transcription_data, f, indent=2)
+        with open(state.transcription_file, 'w', encoding='utf-8') as f:
+            json.dump(transcription_data, f, indent=2, ensure_ascii=False)
     
     def save_analysis(self, state: PipelineState, analysis: "AnalysisResult") -> None:
         """Save analysis result."""
@@ -192,16 +192,16 @@ class StateManager:
             "saved_at": datetime.now().isoformat()
         }
         
-        with open(state.analysis_file, 'w') as f:
-            json.dump(analysis_data, f, indent=2)
+        with open(state.analysis_file, 'w', encoding='utf-8') as f:
+            json.dump(analysis_data, f, indent=2, ensure_ascii=False)
     
     def save_final_result(self, state: PipelineState, result: Dict[str, Any]) -> None:
         """Save final pipeline result."""
         if not state.final_result_file:
             raise ValueError("Final result file path not set in state")
             
-        with open(state.final_result_file, 'w') as f:
-            json.dump(result, f, indent=2)
+        with open(state.final_result_file, 'w', encoding='utf-8') as f:
+            json.dump(result, f, indent=2, ensure_ascii=False)
     
     def load_transcription(self, state: PipelineState) -> Optional[Dict[str, Any]]:
         """Load saved transcription data."""
