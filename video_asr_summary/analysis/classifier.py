@@ -93,8 +93,8 @@ class KeywordBasedClassifier(ContentClassifier):
                 matches = len(re.findall(pattern, text_lower))
                 match_count += matches
             
-            # Normalize by text length to get confidence score
-            confidence = min(match_count / word_count * 100, 1.0)
+            # Normalize by text length to get confidence score (0.0 to 1.0)
+            confidence = min(match_count / word_count, 1.0)
             scores[content_type] = confidence
         
         # Add general as baseline
