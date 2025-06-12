@@ -138,18 +138,27 @@ def check_prerequisites():
             "   Set your API key: export OPENAI_ACCESS_TOKEN='your-api-key'"
         )
     
-    # Check if video file processing modules are available
+    # Check for ffmpeg command-line tool
+    try:
+        import subprocess
+        result = subprocess.run(['ffmpeg', '-version'], 
+                              capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            issues.append("⚠️  ffmpeg command not found. Audio extraction will fail.")
+    except FileNotFoundError:
+        issues.append("⚠️  ffmpeg command not found. Audio extraction will fail.")
+    
+    # Check for OpenCV (used by video processor)
     try:
         import cv2
-        import ffmpeg
-    except ImportError as e:
-        issues.append(f"⚠️  Video processing dependencies missing: {e}")
-    
-    # Check if ASR modules are available  
-    try:
-        import whisper
     except ImportError:
-        issues.append("⚠️  Whisper ASR not available. Transcription will use placeholder.")
+        issues.append("⚠️  OpenCV (cv2) not installed. Video processing will fail.")
+    
+    # Check for MLX Whisper (used by ASR processor)
+    try:
+        import mlx_whisper
+    except ImportError:
+        issues.append("⚠️  mlx_whisper not installed. Transcription will fail.")
     
     return issues
 
@@ -278,7 +287,7 @@ def main():
             print(f"   📄 {file.name}")
         
         if not args.cleanup:
-            print(f"\n💡 Tip: Use --cleanup to remove intermediate files")
+            print("\n💡 Tip: Use --cleanup to remove intermediate files")
             print(f"   Or run: python scripts/process_video.py --status {output_dir}")
         
         print("\n🎉 Processing completed successfully!")
