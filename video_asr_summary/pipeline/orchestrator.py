@@ -7,7 +7,26 @@ from typing import Dict, Any, Optional, Union
 from video_asr_summary.core import VideoInfo, AudioData, TranscriptionResult
 from video_asr_summary.pipeline.state_manager import StateManager, PipelineState
 
-# Import for type checking
+# Import actual processors
+try:
+    from video_asr_summary.video.opencv_processor import OpenCVVideoProcessor
+    VIDEO_PROCESSOR_AVAILABLE = True
+except ImportError:
+    VIDEO_PROCESSOR_AVAILABLE = False
+
+try:
+    from video_asr_summary.audio.extractor import FFmpegAudioExtractor
+    AUDIO_EXTRACTOR_AVAILABLE = True
+except ImportError:
+    AUDIO_EXTRACTOR_AVAILABLE = False
+
+try:
+    from video_asr_summary.asr.whisper_processor import WhisperProcessor
+    ASR_PROCESSOR_AVAILABLE = True
+except ImportError:
+    ASR_PROCESSOR_AVAILABLE = False
+
+# Import for analysis
 try:
     from video_asr_summary.analysis import AnalysisResult, ContentType
     from video_asr_summary.analysis.analyzer import DefaultContentAnalyzer
@@ -27,11 +46,35 @@ class PipelineOrchestrator:
         self.output_dir = Path(output_dir)
         self.state_manager = StateManager(self.output_dir)
         
-        # Initialize processors (these would be injected in real implementation)
+        # Initialize real processors if available
         self._video_processor = None
-        self._audio_extractor = None
+        self._audio_extractor = None 
         self._asr_processor = None
         self._content_analyzer = None
+        
+        # Try to initialize video processor
+        if VIDEO_PROCESSOR_AVAILABLE:
+            try:
+                self._video_processor = OpenCVVideoProcessor()
+                print("✅ Video processor initialized")
+            except Exception as e:
+                print(f"⚠️  Could not initialize video processor: {e}")
+        
+        # Try to initialize audio extractor
+        if AUDIO_EXTRACTOR_AVAILABLE:
+            try:
+                self._audio_extractor = FFmpegAudioExtractor()
+                print("✅ Audio extractor initialized")
+            except Exception as e:
+                print(f"⚠️  Could not initialize audio extractor: {e}")
+        
+        # Try to initialize ASR processor
+        if ASR_PROCESSOR_AVAILABLE:
+            try:
+                self._asr_processor = WhisperProcessor()
+                print("✅ ASR processor initialized")
+            except Exception as e:
+                print(f"⚠️  Could not initialize ASR processor: {e}")
         
         # Initialize analysis components if available
         if ANALYSIS_AVAILABLE and os.getenv("OPENAI_ACCESS_TOKEN"):
@@ -42,8 +85,9 @@ class PipelineOrchestrator:
                 self._content_analyzer = DefaultContentAnalyzer(
                     llm_client, template_manager, classifier
                 )
+                print("✅ Content analyzer initialized")
             except Exception as e:
-                print(f"Warning: Could not initialize content analyzer: {e}")
+                print(f"⚠️  Could not initialize content analyzer: {e}")
                 self._content_analyzer = None
     
     def set_processors(
@@ -141,23 +185,31 @@ class PipelineOrchestrator:
         self.state_manager.update_step(state, step_name)
         
         if not self._video_processor:
-            print("⚠️  Video processor not available, skipping video info extraction")
-            self.state_manager.complete_step(state, step_name)
-            return None
+            print("⚠️  Video processor not available, using basic file info")
+            # Basic file info as fallback
+            try:
+                file_stats = video_path.stat()
+                video_info = VideoInfo(
+                    file_path=video_path,
+                    duration_seconds=0.0,  # Unknown without processing
+                    frame_rate=0.0,       # Unknown without processing
+                    width=0,              # Unknown without processing
+                    height=0,             # Unknown without processing
+                    file_size_bytes=file_stats.st_size
+                )
+                self.state_manager.complete_step(state, step_name)
+                print(f"✅ Basic file info extracted: {video_info.file_size_bytes} bytes")
+                return video_info
+            except Exception as e:
+                self.state_manager.fail_step(state, step_name, str(e))
+                raise
         
         try:
-            # Extract video info (placeholder for actual implementation)
-            video_info = VideoInfo(
-                file_path=video_path,
-                duration_seconds=120.0,  # Placeholder
-                frame_rate=30.0,
-                width=1920,
-                height=1080,
-                file_size_bytes=video_path.stat().st_size
-            )
+            # Use real video processor
+            video_info = self._video_processor.extract_info(video_path)
             
             self.state_manager.complete_step(state, step_name)
-            print(f"✅ Video info extracted: {video_info.duration_seconds:.1f}s")
+            print(f"✅ Video info extracted: {video_info.duration_seconds:.1f}s, {video_info.width}x{video_info.height}")
             return video_info
             
         except Exception as e:
@@ -182,15 +234,13 @@ class PipelineOrchestrator:
             return None
         
         try:
-            # Extract audio (placeholder for actual implementation)
+            # Extract audio using real extractor
             audio_path = Path(state.audio_file)
-            
-            # Placeholder audio data
-            audio_data = AudioData(
-                file_path=audio_path,
-                duration_seconds=120.0,
-                sample_rate=16000,
-                channels=1,
+            audio_data = self._audio_extractor.extract_audio(
+                video_path=video_path,
+                output_path=audio_path,
+                sample_rate=16000,  # Good for ASR
+                channels=1,         # Mono for ASR
                 format="wav"
             )
             
@@ -235,7 +285,7 @@ class PipelineOrchestrator:
             )
         else:
             try:
-                # Actual transcription would go here
+                # Use real ASR processor
                 transcription = self._asr_processor.transcribe(audio_data.file_path)
             except Exception as e:
                 self.state_manager.fail_step(state, step_name, str(e))
