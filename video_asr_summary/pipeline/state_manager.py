@@ -231,9 +231,6 @@ class StateManager:
     
     def get_resume_point(self, state: PipelineState) -> str:
         """Determine where to resume processing."""
-        if state.failed_step:
-            return state.failed_step
-        
         pipeline_steps = [
             "video_info_extraction",
             "audio_extraction", 
@@ -242,6 +239,11 @@ class StateManager:
             "finalization"
         ]
         
+        # If there's a failed step, restart from that step
+        if state.failed_step and state.failed_step in pipeline_steps:
+            return state.failed_step
+        
+        # Otherwise, find the first incomplete step
         for step in pipeline_steps:
             if not self.is_step_completed(state, step):
                 return step
@@ -285,3 +287,11 @@ class StateManager:
             "analysis_language": state.analysis_language,
             "content_type": state.content_type
         }
+    
+    def retry_failed_step(self, state: PipelineState) -> None:
+        """Clear failed step status to allow retry."""
+        if state.failed_step:
+            print(f"🔄 Retrying failed step: {state.failed_step}")
+            state.failed_step = None
+            state.error_message = None
+            self.save_state(state)
