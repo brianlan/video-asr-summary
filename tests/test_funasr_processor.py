@@ -3,6 +3,7 @@
 import pytest
 import torch
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 from video_asr_summary.asr.funasr_processor import FunASRProcessor
 from video_asr_summary.core import TranscriptionResult
@@ -17,56 +18,77 @@ class TestFunASRProcessor:
         
     def test_device_explicit_setting(self):
         """Test explicit device setting."""
-        processor_cpu = FunASRProcessor(device="cpu")
-        assert processor_cpu.device == "cpu"
+        with patch.object(FunASRProcessor, '_get_optimal_device', side_effect=lambda x: x):
+            processor_cpu = FunASRProcessor(device="cpu")
+            assert processor_cpu.device == "cpu"
+            
+            processor_mps = FunASRProcessor(device="mps")
+            assert processor_mps.device == "mps"
+            
+            processor_cuda = FunASRProcessor(device="cuda")
+            assert processor_cuda.device == "cuda"
         
-        processor_mps = FunASRProcessor(device="mps")
-        assert processor_mps.device == "mps"
+    def test_device_auto_selection(self):
+        """Test automatic device selection logic."""
+        with patch.object(FunASRProcessor, '_get_optimal_device', return_value="mps") as mock_get_device:
+            processor = FunASRProcessor(device="auto")
+            mock_get_device.assert_called_once_with("auto")
+            assert processor.device == "mps"
         
-        processor_auto = FunASRProcessor(device="auto")
-        # Auto should select mps on Apple Silicon, cpu otherwise
-        assert processor_auto.device in ["mps", "cpu"]
+        with patch.object(FunASRProcessor, '_get_optimal_device', return_value="cpu") as mock_get_device:
+            processor = FunASRProcessor(device="auto")
+            assert processor.device == "cpu"
         
     def test_model_initialization_parameters(self):
         """Test FunASR processor initialization with different parameters."""
-        # Test default parameters
-        processor_default = FunASRProcessor()
-        assert processor_default.model_path == "iic/SenseVoiceSmall"
-        assert processor_default.language == "auto"
-        
-        # Test custom parameters
-        processor_custom = FunASRProcessor(
-            model_path="custom/model",
-            language="zn", 
-            device="cpu"
-        )
-        assert processor_custom.model_path == "custom/model"
-        assert processor_custom.language == "zn"
-        assert processor_custom.device == "cpu"
+        with patch.object(FunASRProcessor, '_get_optimal_device', return_value="cpu"):
+            # Test default parameters
+            processor_default = FunASRProcessor()
+            assert processor_default.model_path == "iic/SenseVoiceSmall"
+            assert processor_default.language == "auto"
+            assert processor_default.model_revision == "main"
+            assert not processor_default.suppress_warnings
+            
+            # Test custom parameters
+            processor_custom = FunASRProcessor(
+                model_path="custom/model",
+                language="zn", 
+                device="cpu",
+                model_revision="v1.0",
+                suppress_warnings=True
+            )
+            assert processor_custom.model_path == "custom/model"
+            assert processor_custom.language == "zn"
+            assert processor_custom.device == "cpu"
+            assert processor_custom.model_revision == "v1.0"
+            assert processor_custom.suppress_warnings
         
     def test_model_initialization_with_revision(self):
         """Test FunASR processor initialization with model revision."""
-        processor = FunASRProcessor(
-            model_path="iic/SenseVoiceSmall",
-            model_revision="main",
-            device="cpu"
-        )
-        assert processor.model_path == "iic/SenseVoiceSmall"
-        assert processor.model_revision == "main"
-        assert processor.device == "cpu"
+        with patch.object(FunASRProcessor, '_get_optimal_device', return_value="cpu"):
+            processor = FunASRProcessor(
+                model_path="iic/SenseVoiceSmall",
+                model_revision="main",
+                device="cpu"
+            )
+            assert processor.model_path == "iic/SenseVoiceSmall"
+            assert processor.model_revision == "main"
+            assert processor.device == "cpu"
         
     def test_lazy_model_initialization(self):
         """Test that model is only initialized when needed."""
-        processor = FunASRProcessor(device="cpu")
-        assert processor._model is None
+        with patch.object(FunASRProcessor, '_get_optimal_device', return_value="cpu"):
+            processor = FunASRProcessor(device="cpu")
+            assert processor._model is None
         
     def test_transcribe_file_not_found(self):
         """Test transcribe raises error for non-existent file."""
-        processor = FunASRProcessor(device="cpu")
-        non_existent_path = Path("/non/existent/audio.wav")
-        
-        with pytest.raises(FileNotFoundError):
-            processor.transcribe(non_existent_path)
+        with patch.object(FunASRProcessor, '_get_optimal_device', return_value="cpu"):
+            processor = FunASRProcessor(device="cpu")
+            non_existent_path = Path("/non/existent/audio.wav")
+            
+            with pytest.raises(FileNotFoundError):
+                processor.transcribe(non_existent_path)
 
     @pytest.mark.integration
     def test_transcribe_with_cpu_device(self):
@@ -132,3 +154,206 @@ class TestFunASRProcessor:
             assert isinstance(segment["end"], (int, float))
             assert segment["start"] >= 0
             assert segment["end"] >= segment["start"]
+    
+    @patch('torch.backends.mps.is_available')
+    @patch('torch.cuda.is_available')
+    def test_get_optimal_device_mps_available(self, mock_cuda_available, mock_mps_available):
+        """Test device selection when MPS is available."""
+        mock_mps_available.return_value = True
+        mock_cuda_available.return_value = False
+        
+        with patch('torch.device'), patch('torch.randn'):
+            processor = FunASRProcessor.__new__(FunASRProcessor)  # Create without __init__
+            result = processor._get_optimal_device("auto")
+            assert result == "mps"
+    
+    @patch('torch.backends.mps.is_available')
+    @patch('torch.cuda.is_available')
+    def test_get_optimal_device_cuda_available(self, mock_cuda_available, mock_mps_available):
+        """Test device selection when CUDA is available but not MPS."""
+        mock_mps_available.return_value = False
+        mock_cuda_available.return_value = True
+        
+        processor = FunASRProcessor.__new__(FunASRProcessor)
+        result = processor._get_optimal_device("auto")
+        assert result == "cuda"
+    
+    @patch('torch.backends.mps.is_available')
+    @patch('torch.cuda.is_available')
+    def test_get_optimal_device_cpu_fallback(self, mock_cuda_available, mock_mps_available):
+        """Test device selection falls back to CPU."""
+        mock_mps_available.return_value = False
+        mock_cuda_available.return_value = False
+        
+        processor = FunASRProcessor.__new__(FunASRProcessor)
+        result = processor._get_optimal_device("auto")
+        assert result == "cpu"
+    
+    def test_get_optimal_device_explicit_device(self):
+        """Test device selection with explicit device specification."""
+        processor = FunASRProcessor.__new__(FunASRProcessor)
+        
+        assert processor._get_optimal_device("cpu") == "cpu"
+        assert processor._get_optimal_device("mps") == "mps"
+        assert processor._get_optimal_device("cuda") == "cuda"
+        assert processor._get_optimal_device("cuda:0") == "cuda:0"
+    
+    @patch('builtins.__import__', side_effect=ImportError("No torch"))
+    def test_get_optimal_device_import_error(self, mock_import):
+        """Test device selection handles torch import errors."""
+        processor = FunASRProcessor.__new__(FunASRProcessor)
+        result = processor._get_optimal_device("auto")
+        assert result == "cpu"
+    
+    @patch('builtins.__import__')
+    def test_initialize_model_success(self, mock_import):
+        """Test successful model initialization."""
+        # Mock the FunASR AutoModel import
+        mock_funasr_module = Mock()
+        mock_automodel = Mock()
+        mock_model = Mock()
+        mock_automodel.return_value = mock_model
+        mock_funasr_module.AutoModel = mock_automodel
+        
+        def side_effect(name, *args, **kwargs):
+            if name == 'funasr':
+                return mock_funasr_module
+            return __import__(name, *args, **kwargs)
+        mock_import.side_effect = side_effect
+        
+        with patch.object(FunASRProcessor, '_get_optimal_device', return_value="cpu"):
+            processor = FunASRProcessor(device="cpu")
+            processor._initialize_model()
+            
+            mock_automodel.assert_called_once_with(
+                model="iic/SenseVoiceSmall",
+                revision="main",
+                vad_model="fsmn-vad",
+                vad_kwargs={"max_single_segment_time": 30000},
+                device="cpu",
+                disable_update=True,
+                trust_remote_code=False,
+                cache_dir=None,
+            )
+            assert processor._model == mock_model
+    
+    @patch('builtins.__import__', side_effect=ImportError("No FunASR"))
+    def test_initialize_model_import_error(self, mock_import):
+        """Test model initialization raises ImportError when FunASR not available."""
+        with patch.object(FunASRProcessor, '_get_optimal_device', return_value="cpu"):
+            processor = FunASRProcessor(device="cpu")
+            
+            with pytest.raises(ImportError, match="FunASR is not installed"):
+                processor._initialize_model()
+    
+    @patch('builtins.__import__')
+    def test_initialize_model_only_once(self, mock_import):
+        """Test model is only initialized once."""
+        # Mock the FunASR AutoModel import
+        mock_funasr_module = Mock()
+        mock_automodel = Mock()
+        mock_model = Mock()
+        mock_automodel.return_value = mock_model
+        mock_funasr_module.AutoModel = mock_automodel
+        
+        def side_effect(name, *args, **kwargs):
+            if name == 'funasr':
+                return mock_funasr_module
+            return __import__(name, *args, **kwargs)
+        mock_import.side_effect = side_effect
+        
+        with patch.object(FunASRProcessor, '_get_optimal_device', return_value="cpu"):
+            processor = FunASRProcessor(device="cpu")
+            
+            # Call multiple times
+            processor._initialize_model()
+            processor._initialize_model()
+            processor._initialize_model()
+            
+            # Should only be called once
+            mock_automodel.assert_called_once()
+    
+    @patch('builtins.__import__')
+    def test_initialize_model_failure(self, mock_import):
+        """Test model initialization handles failures."""
+        # Mock the FunASR AutoModel import to fail
+        mock_funasr_module = Mock()
+        mock_automodel = Mock(side_effect=Exception("Model init failed"))
+        mock_funasr_module.AutoModel = mock_automodel
+        
+        def side_effect(name, *args, **kwargs):
+            if name == 'funasr':
+                return mock_funasr_module
+            return __import__(name, *args, **kwargs)
+        mock_import.side_effect = side_effect
+        
+        with patch.object(FunASRProcessor, '_get_optimal_device', return_value="cpu"):
+            processor = FunASRProcessor(device="cpu")
+            
+            with pytest.raises(Exception, match="Failed to initialize FunASR model"):
+                processor._initialize_model()
+    
+    @patch('pathlib.Path.exists')
+    @patch('builtins.__import__')
+    @patch('time.time')
+    def test_transcribe_success_mocked(self, mock_time, mock_import, mock_exists):
+        """Test successful transcription with mocked dependencies."""
+        # Setup path mocks
+        mock_exists.return_value = True
+        mock_time.side_effect = [0.0, 1.5, 3.0]  # start, after_generate, end
+        
+        # Mock the FunASR imports
+        mock_funasr_module = Mock()
+        mock_automodel = Mock()
+        mock_model = Mock()
+        mock_automodel.return_value = mock_model
+        mock_funasr_module.AutoModel = mock_automodel
+        
+        # Mock rich_transcription_postprocess
+        mock_postprocess_module = Mock()
+        mock_postprocess = Mock(return_value="测试音频文本内容")
+        mock_postprocess_module.rich_transcription_postprocess = mock_postprocess
+        
+        def import_side_effect(name, *args, **kwargs):
+            if name == 'funasr':
+                return mock_funasr_module
+            elif name == 'funasr.utils.postprocess_utils':
+                return mock_postprocess_module
+            return __import__(name, *args, **kwargs)
+        mock_import.side_effect = import_side_effect
+        
+        # Mock FunASR result
+        mock_funasr_result = [{
+            "text": "测试音频文本内容",
+            "timestamp": [
+                [0, 1500, "测试音频"],
+                [1500, 3000, "文本内容"]
+            ]
+        }]
+        mock_model.generate.return_value = mock_funasr_result
+        
+        with patch.object(FunASRProcessor, '_get_optimal_device', return_value="cpu"):
+            processor = FunASRProcessor(device="cpu")
+            
+            audio_path = Path("/test/audio.wav")
+            result = processor.transcribe(audio_path)
+            
+            # Verify result
+            assert isinstance(result, TranscriptionResult)
+            assert result.text == "测试音频文本内容"
+            assert result.processing_time_seconds == 1.5
+            assert len(result.segments) == 2
+            assert result.language == "zh"
+            assert 0.0 <= result.confidence <= 1.0
+            
+            # Verify mocks were called correctly
+            mock_model.generate.assert_called_once_with(
+                input=str(audio_path),
+                cache={},
+                language="auto",
+                use_itn=True,
+                batch_size_s=60,
+                merge_vad=True,
+                merge_length_s=15,
+            )
+            mock_postprocess.assert_called_once()
