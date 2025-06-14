@@ -290,6 +290,11 @@ During audio processing, you may see various warnings in the console. These are 
 
 All warnings are handled gracefully by the underlying libraries and do not affect processing quality. For detailed analysis, see [docs/warnings_analysis.md](docs/warnings_analysis.md).
 
+## Short TODO
+
+- Expose important arguments
+- Cross-validate FunASR and whisper.
+
 ## License
 
 MIT License

@@ -15,6 +15,8 @@ class FunASRProcessor(ASRProcessor):
         model_path: str = "iic/SenseVoiceSmall",
         language: str = "auto",
         device: str = "auto",
+        model_revision: str = "main",  # Added model revision control
+        suppress_warnings: bool = False,  # Option to suppress warnings
     ) -> None:
         """Initialize FunASRProcessor.
 
@@ -23,13 +25,23 @@ class FunASRProcessor(ASRProcessor):
             language: Language code ('auto', 'zn', 'en', 'yue', 'ja', 'ko')
             device: Device to run on ('auto', 'cpu', 'cuda:0', 'mps', etc.)
                    'auto' will automatically select the best available device
+            model_revision: Model revision/branch to use (default: 'main' for stability)
+            suppress_warnings: Whether to suppress ModelScope warnings (default: False)
         """
         self.model_path = model_path
+        self.model_revision = model_revision
         self.language = language
         self.device = self._get_optimal_device(device)
+        self.suppress_warnings = suppress_warnings
         self._model: Optional[Any] = None
         
+        # Suppress warnings if requested
+        if self.suppress_warnings:
+            import warnings
+            warnings.filterwarnings("ignore", category=UserWarning, module="modelscope")
+        
         print(f"FunASR will use device: {self.device}")
+        print(f"FunASR model: {self.model_path} (revision: {self.model_revision})")
 
     def _get_optimal_device(self, device_preference: str) -> str:
         """Get the optimal device for FunASR processing.
@@ -72,18 +84,39 @@ class FunASRProcessor(ASRProcessor):
         try:
             from funasr import AutoModel
             
-            self._model = AutoModel(
-                model=self.model_path,
-                trust_remote_code=True,
-                vad_model="fsmn-vad",
-                vad_kwargs={"max_single_segment_time": 30000},
-                device=self.device,
-                disable_update=True,
-            )
+            # Enhanced model configuration to reduce warnings
+            model_config = {
+                "model": self.model_path,
+                "revision": self.model_revision,  # Use specified revision for stability
+                "vad_model": "fsmn-vad",
+                "vad_kwargs": {"max_single_segment_time": 30000},
+                "device": self.device,
+                "disable_update": True,
+                # Reduce warnings by being more explicit about remote code
+                "trust_remote_code": False,  # Changed to False to avoid remote code warnings
+                # Add cache directory control
+                "cache_dir": None,  # Use default cache location
+            }
+            
+            print(f"Initializing FunASR model: {self.model_path} on device: {self.device}")
+            
+            # Try with remote code disabled first (more secure and stable)
+            try:
+                self._model = AutoModel(**model_config)
+                print("✓ FunASR model initialized successfully (local code)")
+            except Exception as e:
+                # Fallback: try with remote code if local fails
+                print(f"Local initialization failed, trying with remote code: {e}")
+                model_config["trust_remote_code"] = True
+                self._model = AutoModel(**model_config)
+                print("✓ FunASR model initialized successfully (remote code)")
+                
         except ImportError as e:
             raise ImportError(
                 "FunASR is not installed. Please install it with: pip install funasr"
             ) from e
+        except Exception as e:
+            raise Exception(f"Failed to initialize FunASR model: {str(e)}") from e
 
     def transcribe(self, audio_path: Path) -> TranscriptionResult:
         """Transcribe audio to text using FunASR.

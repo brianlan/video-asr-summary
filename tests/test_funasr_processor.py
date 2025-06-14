@@ -44,6 +44,17 @@ class TestFunASRProcessor:
         assert processor_custom.language == "zn"
         assert processor_custom.device == "cpu"
         
+    def test_model_initialization_with_revision(self):
+        """Test FunASR processor initialization with model revision."""
+        processor = FunASRProcessor(
+            model_path="iic/SenseVoiceSmall",
+            model_revision="main",
+            device="cpu"
+        )
+        assert processor.model_path == "iic/SenseVoiceSmall"
+        assert processor.model_revision == "main"
+        assert processor.device == "cpu"
+        
     def test_lazy_model_initialization(self):
         """Test that model is only initialized when needed."""
         processor = FunASRProcessor(device="cpu")

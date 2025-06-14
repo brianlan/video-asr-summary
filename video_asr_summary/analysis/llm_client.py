@@ -5,6 +5,7 @@ import os
 import time
 from typing import Optional
 import openai
+import httpx
 from video_asr_summary.analysis import (
     AnalysisResult,
     Conclusion,
@@ -21,9 +22,10 @@ class OpenAICompatibleClient(LLMClient):
     def __init__(
         self, 
         api_key: Optional[str] = None,
-        base_url: str = "https://models.github.ai/inference",  
-        model: str = "openai/gpt-4.1",
-        timeout: int = 60
+        base_url: str = "https://openai.newbotai.cn/v1",  
+        # model: str = "gemini-2.5-pro-exp-03-25",
+        model: str = "gemini-2.5-pro-preview-03-25",
+        timeout: int = 1200
     ):
         """Initialize the OpenAI-compatible client.
         
@@ -44,11 +46,12 @@ class OpenAICompatibleClient(LLMClient):
         self.model = model
         self.timeout = timeout
         
-        # Configure OpenAI client
+        # Configure OpenAI client with httpx timeout
+        http_client = httpx.Client(timeout=self.timeout)
         self.client = openai.OpenAI(
             api_key=self.api_key,
             base_url=self.base_url,
-            timeout=self.timeout
+            http_client=http_client
         )
     
     def analyze(self, text: str, prompt_template: PromptTemplate, response_language: str = "en") -> AnalysisResult:
@@ -93,6 +96,10 @@ class OpenAICompatibleClient(LLMClient):
         )
         
         try:
+            start_time = time.time()
+            print(f"🧠 Making LLM API call for {response_language} analysis...")
+            print(f"📝 Text length: {len(text)} characters")
+            
             # Make API call
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -104,10 +111,32 @@ class OpenAICompatibleClient(LLMClient):
                 max_tokens=2000,  # Reasonable limit for analysis
             )
             
-            # Extract response content
-            content = response.choices[0].message.content
-            if not content:
-                raise ValueError("Empty response from LLM")
+            print(f"✅ LLM API call completed")
+            
+            # Extract response content with detailed debugging
+            if not response.choices or len(response.choices) == 0:
+                print(f"❌ No choices in LLM response: {response}")
+                raise ValueError("No choices returned from LLM API")
+                
+            choice = response.choices[0]
+            content = choice.message.content
+            
+            if not content or content.strip() == "":
+                # Detailed debugging for empty responses
+                print(f"❌ Empty response from LLM")
+                print(f"   Response: {response}")
+                print(f"   Choice: {choice}")
+                if hasattr(choice, 'finish_reason'):
+                    print(f"   Finish reason: {choice.finish_reason}")
+                    if choice.finish_reason == "content_filter":
+                        raise ValueError("LLM response was filtered due to content policy. Try with shorter or different content.")
+                    elif choice.finish_reason == "length":
+                        raise ValueError("LLM response was truncated. Try with shorter input text.")
+                if hasattr(response, 'usage'):
+                    print(f"   Token usage: {response.usage}")
+                raise ValueError("Empty response from LLM - possible content filtering or API issues")
+            
+            print(f"📄 Response length: {len(content)} characters")
             
             # Parse the JSON response
             analysis_data = self._parse_llm_response(content)
@@ -128,8 +157,16 @@ class OpenAICompatibleClient(LLMClient):
     
     def _parse_llm_response(self, content: str) -> dict:
         """Parse LLM response content as JSON."""
+        # Check for empty content
+        if not content or content.strip() == "":
+            raise json.JSONDecodeError("Empty content provided to JSON parser", "", 0)
+        
         # Try to extract JSON from response if it contains additional text
         content = content.strip()
+        
+        # Log content for debugging (truncated for privacy)
+        content_preview = content[:200] + "..." if len(content) > 200 else content
+        print(f"📄 Parsing LLM response (preview): {content_preview}")
         
         # Look for JSON block if response contains markdown formatting
         if "```json" in content:
@@ -145,15 +182,24 @@ class OpenAICompatibleClient(LLMClient):
         
         # Find JSON object boundaries
         if content.startswith("{") and content.endswith("}"):
-            return json.loads(content)
+            try:
+                return json.loads(content)
+            except json.JSONDecodeError as e:
+                print(f"❌ JSON parsing failed for content: {content[:500]}...")
+                raise
         else:
             # Try to find JSON object in the content
             start = content.find("{")
             end = content.rfind("}") + 1
             if start != -1 and end > start:
                 json_content = content[start:end]
-                return json.loads(json_content)
+                try:
+                    return json.loads(json_content)
+                except json.JSONDecodeError as e:
+                    print(f"❌ JSON parsing failed for extracted content: {json_content[:500]}...")
+                    raise
             else:
+                print(f"❌ No JSON object found in content: {content[:500]}...")
                 raise json.JSONDecodeError("No valid JSON found in response", content, 0)
     
     def _create_analysis_result(

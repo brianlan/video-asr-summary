@@ -22,6 +22,7 @@ except ImportError:
 
 try:
     from video_asr_summary.asr.whisper_processor import WhisperProcessor
+    from video_asr_summary.asr.funasr_processor import FunASRProcessor
     ASR_PROCESSOR_AVAILABLE = True
 except ImportError:
     ASR_PROCESSOR_AVAILABLE = False
@@ -68,9 +69,10 @@ class PipelineOrchestrator:
             except Exception as e:
                 print(f"⚠️  Could not initialize audio extractor: {e}")
         
-        # Try to initialize ASR processor
+        # Try to initialize ASR processor  
         if ASR_PROCESSOR_AVAILABLE:
             try:
+                # Initialize with default Whisper - will be updated based on language later
                 self._asr_processor = WhisperProcessor()
                 print("✅ ASR processor initialized")
             except Exception as e:
@@ -270,7 +272,11 @@ class PipelineOrchestrator:
         print("🎙️  Transcribing audio to text...")
         self.state_manager.update_step(state, step_name)
         
-        if not self._asr_processor:
+        # Get appropriate ASR processor based on analysis language
+        analysis_language = getattr(state, 'analysis_language', 'en')
+        asr_processor = self._get_asr_processor(analysis_language)
+        
+        if not asr_processor:
             print("⚠️  ASR processor not available, using placeholder transcription")
             # Create placeholder transcription for demo
             transcription = TranscriptionResult(
@@ -285,8 +291,8 @@ class PipelineOrchestrator:
             )
         else:
             try:
-                # Use real ASR processor
-                transcription = self._asr_processor.transcribe(audio_data.file_path)
+                # Use language-appropriate ASR processor
+                transcription = asr_processor.transcribe(audio_data.file_path)
             except Exception as e:
                 self.state_manager.fail_step(state, step_name, str(e))
                 raise
@@ -496,3 +502,44 @@ class PipelineOrchestrator:
     def cleanup(self, keep_final_result: bool = True) -> None:
         """Clean up intermediate files."""
         self.state_manager.cleanup_intermediate_files(keep_final_result)
+    
+    def _get_asr_processor(self, language: str):
+        """Get appropriate ASR processor based on language.
+        
+        Args:
+            language: Target language ('zh', 'en', etc.)
+            
+        Returns:
+            ASR processor instance appropriate for the language
+        """
+        if not ASR_PROCESSOR_AVAILABLE:
+            return None
+            
+        # Use FunASR for Chinese languages, Whisper for others
+        if language.lower() in ['zh', 'zh-cn', 'zh-tw', 'chinese', 'mandarin']:
+            try:
+                print("🇨🇳 Using FunASR processor for Chinese language")
+                # Use Chinese-specific FunASR model with better punctuation
+                return FunASRProcessor(
+                    model_path="iic/SenseVoiceSmall",
+                    language="zn",  # FunASR Chinese language code
+                    device="cpu"    # Use CPU for better compatibility
+                )
+            except Exception as e:
+                print(f"⚠️  Could not initialize FunASR processor: {e}")
+                print("🔄 Falling back to Whisper processor")
+                return WhisperProcessor(language="zh")
+        else:
+            print("🌍 Using Whisper processor for non-Chinese language")
+            # Map common language codes for Whisper
+            whisper_lang = language.lower()
+            if whisper_lang in ['en', 'english']:
+                whisper_lang = "en"
+            elif whisper_lang in ['ja', 'japanese']:
+                whisper_lang = "ja"
+            elif whisper_lang in ['ko', 'korean']:
+                whisper_lang = "ko"
+            else:
+                whisper_lang = None  # Let Whisper auto-detect
+                
+            return WhisperProcessor(language=whisper_lang)

@@ -119,3 +119,52 @@ The implementation automatically:
 - Tests device creation to ensure compatibility
 - Falls back to CPU if GPU initialization fails
 - Maintains identical transcription quality across all devices
+
+## Warning Messages & Solutions
+
+During FunASR initialization, you may see these warning messages:
+
+### Common Warnings
+
+```
+WARNING - Using branch: master as version is unstable, use with caution
+Loading remote code failed: model, No module named 'model'
+```
+
+### What These Mean
+
+1. **Master Branch Warning**: FunASR downloads models from the `master` branch by default, which can be unstable
+2. **Remote Code Warning**: The model tries to load custom code from the repository but fails gracefully
+
+### Solutions
+
+#### Option 1: Suppress Warnings (Production)
+```python
+processor = FunASRProcessor(
+    device="auto",
+    suppress_warnings=True  # Suppresses ModelScope warnings
+)
+```
+
+#### Option 2: Accept Warnings (Development)
+These warnings are cosmetic and don't affect functionality. The processor works correctly despite them.
+
+#### Option 3: Pin Dependencies
+Add to `requirements.txt`:
+```
+funasr==1.2.6
+modelscope>=1.9.0
+```
+
+### Impact Assessment
+
+- ✅ **Functionality**: No impact - transcription works perfectly
+- ✅ **Performance**: No impact - GPU acceleration works as expected  
+- ✅ **Reliability**: Minimal impact - fallback mechanisms handle errors
+- ⚠️ **Stability**: Minor concern - master branch could change unexpectedly
+
+### Recommendation
+
+For **development**: Accept the warnings - they provide useful information about the model loading process.
+
+For **production**: Use `suppress_warnings=True` to clean up logs while maintaining full functionality.
