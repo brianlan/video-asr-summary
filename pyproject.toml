@@ -52,6 +52,9 @@ testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = [
+    "integration: marks tests as integration tests (may be slow and require external resources)",
+]
 # Remove coverage options for now since pytest-cov not installed
 
 [tool.black]
