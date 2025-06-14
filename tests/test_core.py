@@ -122,6 +122,7 @@ class TestDataModels:
             audio_data=audio_data,
             transcription=transcription,
             summary=summary,
+            analysis=None,  # Add missing analysis parameter
             total_processing_time_seconds=10.5,
             timestamp=timestamp,
         )
@@ -130,5 +131,6 @@ class TestDataModels:
         assert pipeline_result.audio_data == audio_data
         assert pipeline_result.transcription == transcription
         assert pipeline_result.summary == summary
+        assert pipeline_result.analysis is None  # Test the analysis field
         assert pipeline_result.total_processing_time_seconds == 10.5
         assert pipeline_result.timestamp == timestamp
