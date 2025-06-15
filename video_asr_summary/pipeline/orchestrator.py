@@ -541,7 +541,7 @@ class PipelineOrchestrator:
                 return FunASRProcessor(
                     model_path="iic/SenseVoiceSmall",
                     language="zn",  # FunASR Chinese language code
-                    device="cpu"    # Use CPU for better compatibility
+                    device="auto"   # Auto-select best available device (MPS/CUDA/CPU)
                 )
             except Exception as e:
                 print(f"⚠️  Could not initialize FunASR processor: {e}")
