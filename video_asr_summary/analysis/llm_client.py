@@ -24,8 +24,8 @@ class OpenAICompatibleClient(LLMClient):
         api_key: Optional[str] = None,
         base_url: str = "https://openai.newbotai.cn/v1",  
         # model: str = "gemini-2.5-pro-exp-03-25",
-        model: str = "gemini-2.5-pro-preview-03-25",
-        timeout: int = 1200
+        model: str = "gemini-2.5-pro-exp-03-25",
+        timeout: int = 300
     ):
         """Initialize the OpenAI-compatible client.
         
@@ -100,16 +100,28 @@ class OpenAICompatibleClient(LLMClient):
             print(f"🧠 Making LLM API call for {response_language} analysis...")
             print(f"📝 Text length: {len(text)} characters")
             
-            # Make API call
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
+            # Model-specific parameters
+            api_params = {
+                "model": self.model,
+                "messages": [
                     {"role": "system", "content": system_prompt_with_language},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.1,  # Low temperature for consistent analysis
-                max_tokens=2000,  # Reasonable limit for analysis
-            )
+                "temperature": 0.1,  # Low temperature for consistent analysis
+            }
+            
+            # Adjust max_tokens based on model
+            if "deepseek" in self.model.lower():
+                api_params["max_tokens"] = 4000  # DeepSeek models need more tokens
+            elif "gpt" in self.model.lower():
+                api_params["max_tokens"] = 3000  # GPT models are efficient
+            elif "qwen" in self.model.lower():
+                api_params["max_tokens"] = 3500  # Qwen models need reasonable space
+            else:
+                api_params["max_tokens"] = 2500  # Default for other models
+            
+            # Make API call
+            response = self.client.chat.completions.create(**api_params)
             
             print(f"✅ LLM API call completed")
             
@@ -174,11 +186,23 @@ class OpenAICompatibleClient(LLMClient):
             end = content.find("```", start)
             if end != -1:
                 content = content[start:end].strip()
+            else:
+                # No closing ```, extract from ```json to end
+                content = content[start:].strip()
         elif "```" in content:
             start = content.find("```") + 3
             end = content.find("```", start)
             if end != -1:
                 content = content[start:end].strip()
+            else:
+                # No closing ```, extract from ``` to end
+                content = content[start:].strip()
+                
+        # If content doesn't start with {, try to find the JSON object
+        if not content.startswith("{"):
+            json_start = content.find("{")
+            if json_start != -1:
+                content = content[json_start:]
         
         # Find JSON object boundaries
         if content.startswith("{") and content.endswith("}"):
@@ -197,7 +221,40 @@ class OpenAICompatibleClient(LLMClient):
                     return json.loads(json_content)
                 except json.JSONDecodeError as e:
                     print(f"❌ JSON parsing failed for extracted content: {json_content[:500]}...")
-                    raise
+                    # Try to fix incomplete JSON by finding the last complete field
+                    try:
+                        # Find the last complete field before the error
+                        lines = json_content.split('\n')
+                        valid_lines = []
+                        brace_count = 0
+                        bracket_count = 0
+                        
+                        for line in lines:
+                            valid_lines.append(line)
+                            brace_count += line.count('{') - line.count('}')
+                            bracket_count += line.count('[') - line.count(']')
+                            
+                            # If we have balanced braces and brackets, try parsing
+                            if brace_count == 0 and bracket_count == 0:
+                                test_json = '\n'.join(valid_lines)
+                                try:
+                                    return json.loads(test_json)
+                                except json.JSONDecodeError:
+                                    continue
+                        
+                        # If that fails, try adding closing braces
+                        incomplete_json = '\n'.join(valid_lines)
+                        if brace_count > 0:
+                            incomplete_json += '}' * brace_count
+                        if bracket_count > 0:
+                            incomplete_json += ']' * bracket_count
+                            
+                        print(f"🔧 Attempting to fix incomplete JSON...")
+                        return json.loads(incomplete_json)
+                        
+                    except json.JSONDecodeError:
+                        print(f"❌ Could not repair JSON. Original error: {e}")
+                        raise
             else:
                 print(f"❌ No JSON object found in content: {content[:500]}...")
                 raise json.JSONDecodeError("No valid JSON found in response", content, 0)
