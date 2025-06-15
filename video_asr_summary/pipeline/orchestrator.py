@@ -42,10 +42,21 @@ except ImportError:
 class PipelineOrchestrator:
     """Orchestrates the complete video processing pipeline with state management."""
     
-    def __init__(self, output_dir: Union[str, Path]):
+    def __init__(
+        self, 
+        output_dir: Union[str, Path],
+        llm_model: str = "gemini-2.5-pro-preview-03-25",
+        llm_endpoint: str = "https://openai.newbotai.cn/v1", 
+        llm_timeout: int = 1200
+    ):
         """Initialize pipeline orchestrator."""
         self.output_dir = Path(output_dir)
         self.state_manager = StateManager(self.output_dir)
+        
+        # Store LLM configuration
+        self.llm_model = llm_model
+        self.llm_endpoint = llm_endpoint
+        self.llm_timeout = llm_timeout
         
         # Initialize real processors if available
         self._video_processor = None
@@ -81,13 +92,20 @@ class PipelineOrchestrator:
         # Initialize analysis components if available
         if ANALYSIS_AVAILABLE and os.getenv("OPENAI_ACCESS_TOKEN"):
             try:
-                llm_client = OpenAICompatibleClient()
+                llm_client = OpenAICompatibleClient(
+                    model=self.llm_model,
+                    base_url=self.llm_endpoint,
+                    timeout=self.llm_timeout
+                )
                 template_manager = DefaultPromptTemplateManager()
                 classifier = KeywordBasedClassifier()
                 self._content_analyzer = DefaultContentAnalyzer(
                     llm_client, template_manager, classifier
                 )
                 print("✅ Content analyzer initialized")
+                print(f"   📡 Model: {self.llm_model}")
+                print(f"   🌐 Endpoint: {self.llm_endpoint}")
+                print(f"   ⏱️ Timeout: {self.llm_timeout}s")
             except Exception as e:
                 print(f"⚠️  Could not initialize content analyzer: {e}")
                 self._content_analyzer = None

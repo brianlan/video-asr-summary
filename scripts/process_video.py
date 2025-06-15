@@ -43,6 +43,16 @@ Examples:
   python scripts/process_video.py interview.mp4 ./results \\
     --analysis-language es --content-type political_commentary
 
+  # With custom LLM model and endpoint
+  python scripts/process_video.py video.mp4 ./output \\
+    --llm-model "gpt-4" --llm-endpoint "https://api.openai.com/v1"
+
+  # With custom Chinese model and timeout
+  python scripts/process_video.py chinese_video.mp4 ./output \\
+    --analysis-language zh --llm-model "qwen-max" \\
+    --llm-endpoint "https://dashscope.aliyuncs.com/compatible-mode/v1" \\
+    --llm-timeout 300
+
   # Resume interrupted processing
   python scripts/process_video.py video.mp4 ./output --resume
 
@@ -61,6 +71,19 @@ Analysis Languages:
   en (English), es (Spanish), fr (French), de (German), it (Italian),
   pt (Portuguese), ru (Russian), ja (Japanese), ko (Korean), 
   zh (Chinese), ar (Arabic), hi (Hindi)
+
+Popular LLM Models:
+  - gemini-2.5-pro-preview-03-25 (default, good for Chinese)
+  - gpt-4, gpt-4-turbo, gpt-3.5-turbo (OpenAI)
+  - qwen-max, qwen-plus (Alibaba Cloud)
+  - glm-4, glm-3-turbo (Zhipu AI)
+  - deepseek-chat (DeepSeek)
+
+Common Endpoints:
+  - https://openai.newbotai.cn/v1 (default, multi-model)
+  - https://api.openai.com/v1 (OpenAI official)
+  - https://dashscope.aliyuncs.com/compatible-mode/v1 (Alibaba)
+  - https://api.deepseek.com/v1 (DeepSeek)
         """
     )
     
@@ -92,6 +115,27 @@ Analysis Languages:
             "book_section", "personal_casual_talk", "general"
         ],
         help="Content type for analysis (auto-detected if not specified)"
+    )
+    
+    parser.add_argument(
+        "--llm-model", "-m",
+        type=str,
+        default="gemini-2.5-pro-preview-03-25",
+        help="LLM model name for content analysis (default: gemini-2.5-pro-preview-03-25)"
+    )
+    
+    parser.add_argument(
+        "--llm-endpoint", "-e",
+        type=str,
+        default="https://openai.newbotai.cn/v1",
+        help="LLM API endpoint URL (default: https://openai.newbotai.cn/v1)"
+    )
+    
+    parser.add_argument(
+        "--llm-timeout",
+        type=int,
+        default=1200,
+        help="LLM API request timeout in seconds (default: 1200)"
     )
     
     parser.add_argument(
@@ -204,8 +248,13 @@ def main():
     video_path = Path(args.video_path)
     output_dir = Path(args.output_dir)
     
-    # Create orchestrator
-    orchestrator = PipelineOrchestrator(output_dir)
+    # Create orchestrator with LLM configuration
+    orchestrator = PipelineOrchestrator(
+        output_dir,
+        llm_model=args.llm_model,
+        llm_endpoint=args.llm_endpoint,
+        llm_timeout=args.llm_timeout
+    )
     
     # Show status if requested
     if args.status:
@@ -240,6 +289,9 @@ def main():
     print(f"📹 Input: {video_path}")
     print(f"📁 Output: {output_dir}")
     print(f"🌐 Analysis Language: {args.analysis_language}")
+    print(f"🤖 LLM Model: {args.llm_model}")
+    print(f"📡 LLM Endpoint: {args.llm_endpoint}")
+    print(f"⏱️ LLM Timeout: {args.llm_timeout}s")
     
     if args.content_type:
         print(f"📋 Content Type: {args.content_type}")
