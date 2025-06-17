@@ -708,7 +708,7 @@ class PipelineOrchestrator:
                 print("🇨🇳 Using FunASR processor for Chinese language")
                 # Use Chinese-specific FunASR model with better punctuation
                 return FunASRProcessor(
-                    model_path="iic/SenseVoiceSmall",
+                    model_path="iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
                     language="zn",  # FunASR Chinese language code
                     device="auto"   # Auto-select best available device (MPS/CUDA/CPU)
                 )

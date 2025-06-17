@@ -95,6 +95,9 @@ class FunASRProcessor(ASRProcessor):
                 "vad_kwargs": {"max_single_segment_time": 30000},
                 "device": self.device,
                 "disable_update": True,
+                "spk_mode": "vad_segment",
+                "punc_model": "ct-punc",  # Use CT-PUNC for better punctuation
+                "spk_model": "cam++",
                 # Reduce warnings by being more explicit about remote code
                 "trust_remote_code": False,  # Changed to False to avoid remote code warnings
                 # Add cache directory control
@@ -148,13 +151,10 @@ class FunASRProcessor(ASRProcessor):
                 cache={},
                 language=self.language,
                 use_itn=True,  # Inverse text normalization for better formatting
-                batch_size_s=60,
+                batch_size_s=120,
                 merge_vad=False,  # Merge voice activity detection segments
                 merge_length_s=0,
-                # merge_vad=False,  # Don't merge VAD segments to preserve timestamps
-                # merge_length_s=0,  # Don't merge segments automatically
-                # sentence_timestamp=True,  # Enable sentence-level timestamps
-                # word_timestamp=True,  # Enable word-level timestamps if available
+                sentence_timestamp=True,  # Enable sentence-level timestamps
             )
 
             processing_time = time.time() - start_time
