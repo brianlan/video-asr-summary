@@ -36,7 +36,8 @@ Please provide your analysis in the following JSON format:
             "confidence": 0.0-1.0,
             "supporting_arguments": ["argument 1", "argument 2"],
             "evidence_quality": "strong|moderate|weak|insufficient",
-            "logical_issues": ["any logical fallacies or weak reasoning"]
+            "logical_issues": ["any logical fallacies or weak reasoning"],
+            "attributed_speakers": ["SPEAKER_01", "SPEAKER_02"]
         }}
     ],
     "overall_credibility": "high|medium|low",
@@ -51,7 +52,8 @@ Focus on:
 3. The quality and reliability of the supporting evidence
 4. Any logical fallacies or weak arguments
 5. Potential political biases or one-sided presentation
-6. Factual claims that can be independently verified""",
+6. Factual claims that can be independently verified
+7. **IMPORTANT: When the transcript contains speaker labels (SPEAKER_01, SPEAKER_02, etc.), identify which speakers made each conclusion and include them in the "attributed_speakers" field**""",
             description="Analyzes political commentary for conclusions, arguments, and credibility"
         )
         
@@ -73,7 +75,8 @@ Please provide your analysis in the following JSON format:
             "confidence": 0.0-1.0,
             "supporting_arguments": ["supporting fact 1", "supporting fact 2"],
             "evidence_quality": "strong|moderate|weak|insufficient",
-            "logical_issues": ["any unsupported jumps in logic"]
+            "logical_issues": ["any unsupported jumps in logic"],
+            "attributed_speakers": ["SPEAKER_01", "SPEAKER_02"]
         }}
     ],
     "overall_credibility": "high|medium|low",
@@ -88,7 +91,8 @@ Focus on:
 3. The quality and variety of sources cited
 4. Any editorial opinions presented as facts
 5. Potential media bias or framing effects
-6. Factual claims that can be independently verified""",
+6. Factual claims that can be independently verified
+7. **IMPORTANT: When the transcript contains speaker labels (SPEAKER_01, SPEAKER_02, etc.), identify which speakers made each conclusion and include them in the "attributed_speakers" field**""",
             description="Analyzes news reports for factual accuracy and editorial interpretation"
         )
         
@@ -110,7 +114,8 @@ Please provide your analysis in the following JSON format:
             "confidence": 0.0-1.0,
             "supporting_arguments": ["technical evidence 1", "test result 2"],
             "evidence_quality": "strong|moderate|weak|insufficient",
-            "logical_issues": ["methodological issues", "unsupported claims"]
+            "logical_issues": ["methodological issues", "unsupported claims"],
+            "attributed_speakers": ["SPEAKER_01", "SPEAKER_02"]
         }}
     ],
     "overall_credibility": "high|medium|low",
@@ -125,7 +130,8 @@ Focus on:
 3. The quality and rigor of the testing methodology
 4. Any unsupported technical claims or generalizations
 5. Potential commercial or selection biases
-6. Technical claims that can be independently tested or verified""",
+6. Technical claims that can be independently tested or verified
+7. **IMPORTANT: When the transcript contains speaker labels (SPEAKER_01, SPEAKER_02, etc.), identify which speakers made each conclusion and include them in the "attributed_speakers" field**""",
             description="Analyzes technical reviews for methodology and conclusion validity"
         )
         
@@ -147,7 +153,8 @@ Please provide your analysis in the following JSON format:
             "confidence": 0.0-1.0,
             "supporting_arguments": ["argument 1", "argument 2"],
             "evidence_quality": "strong|moderate|weak|insufficient",
-            "logical_issues": ["any logical issues or fallacies"]
+            "logical_issues": ["any logical issues or fallacies"],
+            "attributed_speakers": ["SPEAKER_01", "SPEAKER_02"]
         }}
     ],
     "overall_credibility": "high|medium|low",
@@ -162,7 +169,8 @@ Focus on:
 3. The strength and reliability of the supporting evidence
 4. Any logical fallacies or weak reasoning patterns
 5. Potential biases in presentation or argument selection
-6. Factual claims that can be independently verified""",
+6. Factual claims that can be independently verified
+7. **IMPORTANT: When the transcript contains speaker labels (SPEAKER_01, SPEAKER_02, etc.), identify which speakers made each conclusion and include them in the "attributed_speakers" field**""",
             description="General analysis template for any content type"
         )
         
@@ -184,7 +192,8 @@ Please provide your analysis in the following JSON format:
             "confidence": 0.0-1.0,
             "supporting_arguments": ["supporting evidence 1", "example 2", "reference 3"],
             "evidence_quality": "strong|moderate|weak|insufficient",
-            "logical_issues": ["any gaps in reasoning or unsupported claims"]
+            "logical_issues": ["any gaps in reasoning or unsupported claims"],
+            "attributed_speakers": ["SPEAKER_01", "SPEAKER_02"]
         }}
     ],
     "overall_credibility": "high|medium|low",
@@ -199,7 +208,8 @@ Focus on:
 3. The logical flow and structure of the presentation
 4. Any unsupported assertions or gaps in reasoning
 5. Potential author biases or limited perspectives
-6. Factual claims that can be independently verified or cross-referenced""",
+6. Factual claims that can be independently verified or cross-referenced
+7. **IMPORTANT: When the transcript contains speaker labels (SPEAKER_01, SPEAKER_02, etc.), identify which speakers made each conclusion and include them in the "attributed_speakers" field**""",
             description="Analyzes book sections for conceptual clarity and evidence quality"
         )
         
@@ -221,7 +231,8 @@ Please provide your analysis in the following JSON format:
             "confidence": 0.0-1.0,
             "supporting_arguments": ["personal experience 1", "anecdotal evidence 2"],
             "evidence_quality": "strong|moderate|weak|insufficient",
-            "logical_issues": ["overgeneralization", "anecdotal reasoning"]
+            "logical_issues": ["overgeneralization", "anecdotal reasoning"],
+            "attributed_speakers": ["SPEAKER_01", "SPEAKER_02"]
         }}
     ],
     "overall_credibility": "high|medium|low",
@@ -237,6 +248,7 @@ Focus on:
 4. Common informal reasoning patterns (anecdotes, generalizations, assumptions)
 5. Personal biases or limited individual perspectives
 6. Any factual claims mixed within the personal narrative that can be verified
+7. **IMPORTANT: When the transcript contains speaker labels (SPEAKER_01, SPEAKER_02, etc.), identify which speakers made each conclusion and include them in the "attributed_speakers" field**
 
 Note: This is casual conversation analysis - be respectful of personal opinions while identifying reasoning patterns.""",
             description="Analyzes personal conversations for viewpoints and informal reasoning patterns"

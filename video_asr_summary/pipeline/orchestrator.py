@@ -4,7 +4,7 @@ import os
 import time
 from pathlib import Path
 from typing import Dict, Any, Optional, Union
-from video_asr_summary.core import VideoInfo, AudioData, TranscriptionResult
+from video_asr_summary.core import VideoInfo, AudioData, TranscriptionResult, DiarizationResult, EnhancedTranscriptionResult
 from video_asr_summary.pipeline.state_manager import StateManager, PipelineState
 
 # Import actual processors
@@ -27,9 +27,17 @@ try:
 except ImportError:
     ASR_PROCESSOR_AVAILABLE = False
 
+# Import for diarization
+try:
+    from video_asr_summary.diarization.pyannote_processor import PyannoteAudioProcessor
+    from video_asr_summary.diarization.integrator import SegmentBasedIntegrator
+    DIARIZATION_AVAILABLE = True
+except ImportError:
+    DIARIZATION_AVAILABLE = False
+
 # Import for analysis
 try:
-    from video_asr_summary.analysis import AnalysisResult, ContentType
+    from video_asr_summary.analysis import ContentType
     from video_asr_summary.analysis.analyzer import DefaultContentAnalyzer
     from video_asr_summary.analysis.classifier import KeywordBasedClassifier
     from video_asr_summary.analysis.llm_client import OpenAICompatibleClient
@@ -62,6 +70,8 @@ class PipelineOrchestrator:
         self._video_processor = None
         self._audio_extractor = None 
         self._asr_processor = None
+        self._diarization_processor = None
+        self._diarization_integrator = None
         self._content_analyzer = None
         
         # Try to initialize video processor
@@ -88,6 +98,27 @@ class PipelineOrchestrator:
                 print("✅ ASR processor initialized")
             except Exception as e:
                 print(f"⚠️  Could not initialize ASR processor: {e}")
+        
+        # Try to initialize diarization components
+        if DIARIZATION_AVAILABLE:
+            try:
+                # Check for Hugging Face token for pyannote
+                hf_token = os.getenv("HF_ACCESS_TOKEN")
+                if hf_token:
+                    self._diarization_processor = PyannoteAudioProcessor(
+                        auth_token=hf_token,
+                        device="auto"  # Auto-select best device (MPS/CUDA/CPU)
+                    )
+                    self._diarization_integrator = SegmentBasedIntegrator()
+                    print("✅ Diarization processor initialized")
+                    print("   🎙️ Using pyannote.audio for speaker diarization")
+                else:
+                    print("⚠️  Diarization disabled: HF_ACCESS_TOKEN not found")
+                    print("   💡 Set HF_ACCESS_TOKEN environment variable for speaker diarization")
+            except Exception as e:
+                print(f"⚠️  Could not initialize diarization: {e}")
+                self._diarization_processor = None
+                self._diarization_integrator = None
         
         # Initialize analysis components if available
         if ANALYSIS_AVAILABLE and os.getenv("OPENAI_ACCESS_TOKEN"):
@@ -167,14 +198,18 @@ class PipelineOrchestrator:
             # Execute pipeline steps
             video_info = self._extract_video_info(state, video_path)
             audio_data = self._extract_audio(state, video_path)
+            diarization = self._diarize_speakers(state, audio_data)
             transcription = self._transcribe_audio(state, audio_data)
-            analysis = self._analyze_content(state, transcription)
+            enhanced_transcription = self._integrate_diarization(state, transcription, diarization)
+            analysis = self._analyze_content(state, enhanced_transcription)
             
             # Create final result
             result = self._finalize_results(state, {
                 "video_info": self._video_info_to_dict(video_info) if video_info else None,
                 "audio_data": self._audio_data_to_dict(audio_data) if audio_data else None,
+                "diarization": self._diarization_to_dict(diarization) if diarization else None,
                 "transcription": self._transcription_to_dict(transcription) if transcription else None,
+                "enhanced_transcription": self._enhanced_transcription_to_dict(enhanced_transcription) if enhanced_transcription else None,
                 "analysis": self._analysis_to_dict(analysis) if analysis else None,
                 "processing_summary": self.state_manager.get_summary(state)
             })
@@ -325,7 +360,7 @@ class PipelineOrchestrator:
             self.state_manager.fail_step(state, step_name, str(e))
             raise
     
-    def _analyze_content(self, state: PipelineState, transcription: Optional[TranscriptionResult]) -> Optional[Any]:
+    def _analyze_content(self, state: PipelineState, transcription: Optional[Union[TranscriptionResult, EnhancedTranscriptionResult]]) -> Optional[Any]:
         """Analyze transcribed content."""
         step_name = "analysis"
         
@@ -333,7 +368,32 @@ class PipelineOrchestrator:
             print("⏭️  Content analysis already completed")
             return self._load_analysis_result(state)
         
-        if not transcription or not transcription.text.strip():
+        if not transcription:
+            print("⚠️  No transcription available, skipping content analysis")
+            self.state_manager.complete_step(state, step_name)
+            return None
+        
+        # Extract text from transcription (handle both types)
+        if isinstance(transcription, EnhancedTranscriptionResult):
+            # Format text with speaker attribution for better analysis
+            speaker_segments = []
+            for seg in transcription.speaker_attributed_segments:
+                speaker = seg.get('speaker', 'Unknown Speaker')
+                text_content = seg.get('text', '').strip()
+                if text_content:
+                    speaker_segments.append(f"{speaker}: {text_content}")
+            
+            if speaker_segments:
+                text = "\n".join(speaker_segments)
+                print(f"   🎙️ Using speaker-attributed text with {len(speaker_segments)} segments")
+            else:
+                # Fallback to regular text if no speaker segments
+                text = transcription.transcription.text
+                print("   ⚠️ No speaker segments found, using plain transcription")
+        else:
+            text = transcription.text
+            
+        if not text.strip():
             print("⚠️  No transcription available, skipping content analysis")
             self.state_manager.complete_step(state, step_name)
             return None
@@ -358,7 +418,7 @@ class PipelineOrchestrator:
             # Perform analysis
             start_time = time.time()
             analysis = self._content_analyzer.analyze(
-                transcription.text,
+                text,
                 content_type=content_type,
                 response_language=state.analysis_language
             )
@@ -402,6 +462,115 @@ class PipelineOrchestrator:
             self.state_manager.complete_step(state, step_name)
             
             return final_results
+            
+        except Exception as e:
+            self.state_manager.fail_step(state, step_name, str(e))
+            raise
+    
+    def _diarize_speakers(self, state: PipelineState, audio_data: Optional[AudioData]) -> Optional[DiarizationResult]:
+        """Perform speaker diarization on audio."""
+        step_name = "diarization"
+        
+        if self.state_manager.is_step_completed(state, step_name):
+            print("⏭️  Speaker diarization already completed")
+            return self._load_diarization_result(state)
+        
+        if not audio_data:
+            print("⚠️  No audio data available, skipping diarization")
+            self.state_manager.complete_step(state, step_name)
+            return None
+        
+        if not self._diarization_processor:
+            print("⚠️  Diarization processor not available, skipping speaker diarization")
+            self.state_manager.complete_step(state, step_name)
+            return None
+        
+        print("🎙️ Performing speaker diarization...")
+        self.state_manager.update_step(state, step_name)
+        
+        try:
+            start_time = time.time()
+            diarization = self._diarization_processor.diarize(audio_data.file_path)
+            processing_time = time.time() - start_time
+            
+            # Update processing time
+            diarization.processing_time_seconds = processing_time
+            
+            # TODO: Add state manager support for diarization
+            # self.state_manager.save_diarization(state, diarization)
+            self.state_manager.complete_step(state, step_name)
+            
+            print(f"✅ Speaker diarization completed in {processing_time:.1f}s")
+            print(f"   👥 Found {diarization.num_speakers} speakers")
+            print(f"   📊 {len(diarization.segments)} speaker segments")
+            
+            return diarization
+            
+        except Exception as e:
+            self.state_manager.fail_step(state, step_name, str(e))
+            raise
+
+    def _integrate_diarization(self, state: PipelineState, transcription: Optional[TranscriptionResult], 
+                              diarization: Optional[DiarizationResult]) -> Optional[EnhancedTranscriptionResult]:
+        """Integrate diarization results with transcription."""
+        step_name = "diarization_integration"
+        
+        if self.state_manager.is_step_completed(state, step_name):
+            print("⏭️  Diarization integration already completed")
+            return self._load_enhanced_transcription_result(state)
+        
+        if not transcription:
+            print("⚠️  No transcription available, skipping diarization integration")
+            self.state_manager.complete_step(state, step_name)
+            return None
+        
+        if not diarization:
+            print("⚠️  No diarization results, creating enhanced transcription without speaker info")
+            # Create enhanced transcription without speaker information
+            enhanced = EnhancedTranscriptionResult(
+                transcription=transcription,
+                diarization=DiarizationResult(segments=[], num_speakers=0),
+                speaker_attributed_segments=[
+                    {
+                        'start': seg.get('start', 0),
+                        'end': seg.get('end', 0),
+                        'text': seg.get('text', ''),
+                        'speaker': None,
+                        'confidence': seg.get('confidence', 1.0)
+                    }
+                    for seg in transcription.segments
+                ],
+                processing_time_seconds=0.0
+            )
+            # TODO: Add state manager support for enhanced transcription  
+            # self.state_manager.save_enhanced_transcription(state, enhanced)
+            self.state_manager.complete_step(state, step_name)
+            return enhanced
+        
+        if not self._diarization_integrator:
+            print("⚠️  Diarization integrator not available")
+            self.state_manager.complete_step(state, step_name)
+            return None
+        
+        print("🔗 Integrating speaker diarization with transcription...")
+        self.state_manager.update_step(state, step_name)
+        
+        try:
+            start_time = time.time()
+            enhanced_transcription = self._diarization_integrator.integrate(transcription, diarization)
+            processing_time = time.time() - start_time
+            
+            # Update processing time
+            enhanced_transcription.processing_time_seconds = processing_time
+            
+            # TODO: Add state manager support for enhanced transcription
+            # self.state_manager.save_enhanced_transcription(state, enhanced_transcription)
+            self.state_manager.complete_step(state, step_name)
+            
+            print(f"✅ Diarization integration completed in {processing_time:.1f}s")
+            print(f"   📝 {len(enhanced_transcription.speaker_attributed_segments)} segments with speaker attribution")
+            
+            return enhanced_transcription
             
         except Exception as e:
             self.state_manager.fail_step(state, step_name, str(e))
@@ -561,3 +730,38 @@ class PipelineOrchestrator:
                 whisper_lang = None  # Let Whisper auto-detect
                 
             return WhisperProcessor(language=whisper_lang)
+    
+    def _diarization_to_dict(self, diarization: DiarizationResult) -> Dict[str, Any]:
+        """Convert DiarizationResult to dictionary."""
+        return {
+            "num_speakers": diarization.num_speakers,
+            "processing_time_seconds": diarization.processing_time_seconds,
+            "segments": [
+                {
+                    "start": seg.start,
+                    "end": seg.end,
+                    "speaker": seg.speaker,
+                    "confidence": seg.confidence
+                }
+                for seg in diarization.segments
+            ]
+        }
+    
+    def _enhanced_transcription_to_dict(self, enhanced: EnhancedTranscriptionResult) -> Dict[str, Any]:
+        """Convert EnhancedTranscriptionResult to dictionary."""
+        return {
+            "transcription": self._transcription_to_dict(enhanced.transcription),
+            "diarization": self._diarization_to_dict(enhanced.diarization),
+            "speaker_attributed_segments": enhanced.speaker_attributed_segments,
+            "processing_time_seconds": enhanced.processing_time_seconds
+        }
+    
+    def _load_diarization_result(self, state: PipelineState) -> Optional[DiarizationResult]:
+        """Load diarization result from saved file."""
+        # TODO: Implement when state manager supports diarization
+        return None
+    
+    def _load_enhanced_transcription_result(self, state: PipelineState) -> Optional[EnhancedTranscriptionResult]:
+        """Load enhanced transcription result from saved file."""
+        # TODO: Implement when state manager supports enhanced transcription
+        return None

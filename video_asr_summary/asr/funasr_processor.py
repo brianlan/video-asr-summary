@@ -1,10 +1,13 @@
 """FunASR-based ASR processor for Chinese speech recognition."""
 
+import logging
 import time
 from pathlib import Path
 from typing import Optional, Any
 
 from video_asr_summary.core import ASRProcessor, TranscriptionResult
+
+logger = logging.getLogger(__name__)
 
 
 class FunASRProcessor(ASRProcessor):
@@ -15,7 +18,7 @@ class FunASRProcessor(ASRProcessor):
         model_path: str = "iic/SenseVoiceSmall",
         language: str = "auto",
         device: str = "auto",
-        model_revision: str = "main",  # Added model revision control
+        model_revision: str = "master",  # Added model revision control
         suppress_warnings: bool = False,  # Option to suppress warnings
     ) -> None:
         """Initialize FunASRProcessor.
@@ -139,15 +142,19 @@ class FunASRProcessor(ASRProcessor):
         start_time = time.time()
 
         try:
-            # Call FunASR
+            # Call FunASR with timestamp generation
             result = self._model.generate(
                 input=str(audio_path),
                 cache={},
                 language=self.language,
                 use_itn=True,  # Inverse text normalization for better formatting
                 batch_size_s=60,
-                merge_vad=True,  # Merge voice activity detection segments
-                merge_length_s=15,
+                merge_vad=False,  # Merge voice activity detection segments
+                merge_length_s=0,
+                # merge_vad=False,  # Don't merge VAD segments to preserve timestamps
+                # merge_length_s=0,  # Don't merge segments automatically
+                # sentence_timestamp=True,  # Enable sentence-level timestamps
+                # word_timestamp=True,  # Enable word-level timestamps if available
             )
 
             processing_time = time.time() - start_time
@@ -199,13 +206,16 @@ class FunASRProcessor(ASRProcessor):
         segments = []
         
         # FunASR may provide timestamp information in different formats
-        # This is a basic implementation - adjust based on actual FunASR output format
+        # Try multiple approaches to extract timestamps
+        
+        # Approach 1: Look for 'timestamp' field (sentence-level)
         raw_segments = asr_result.get("timestamp", [])
         
         if isinstance(raw_segments, list) and raw_segments:
+            logger.info(f"Found {len(raw_segments)} timestamp segments")
             for i, segment_info in enumerate(raw_segments):
-                if isinstance(segment_info, list) and len(segment_info) >= 3:
-                    # Format: [start_ms, end_ms, text]
+                if isinstance(segment_info, list) and len(segment_info) >= 2:
+                    # Format: [start_ms, end_ms, text] or [start_ms, end_ms]
                     start_ms, end_ms = segment_info[0], segment_info[1]
                     segment_text = segment_info[2] if len(segment_info) > 2 else ""
                     
@@ -216,18 +226,109 @@ class FunASRProcessor(ASRProcessor):
                         "text": segment_text,
                         "confidence": 0.9,  # Default confidence for FunASR
                     })
-        else:
-            # If no segment information, create single segment
+        
+        # Approach 2: Look for 'sentence_info' field
+        if not segments:
+            sentence_info = asr_result.get("sentence_info", [])
+            if isinstance(sentence_info, list) and sentence_info:
+                logger.info(f"Found {len(sentence_info)} sentence info segments")
+                for i, sentence in enumerate(sentence_info):
+                    if isinstance(sentence, dict):
+                        start = sentence.get("start", 0) / 1000.0
+                        end = sentence.get("end", start + 1.0) / 1000.0
+                        text = sentence.get("text", "")
+                        
+                        segments.append({
+                            "id": i,
+                            "start": start,
+                            "end": end,
+                            "text": text,
+                            "confidence": 0.9,
+                        })
+        
+        # Approach 3: Look for word-level timestamps
+        if not segments:
+            word_info = asr_result.get("word_info", [])
+            if isinstance(word_info, list) and word_info:
+                logger.info(f"Found {len(word_info)} word-level timestamps")
+                # Group words into sentences by looking for punctuation
+                current_segment = {"words": [], "start": None, "end": None}
+                segment_id = 0
+                
+                for word in word_info:
+                    if isinstance(word, dict):
+                        word_text = word.get("text", "")
+                        word_start = word.get("start", 0) / 1000.0
+                        word_end = word.get("end", word_start + 0.1) / 1000.0
+                        
+                        if current_segment["start"] is None:
+                            current_segment["start"] = word_start
+                        
+                        current_segment["words"].append(word_text)
+                        current_segment["end"] = word_end
+                        
+                        # End segment on punctuation or every ~15 words
+                        if (word_text.endswith((".", "。", "?", "？", "!", "！")) or 
+                            len(current_segment["words"]) >= 15):
+                            
+                            segments.append({
+                                "id": segment_id,
+                                "start": current_segment["start"],
+                                "end": current_segment["end"],
+                                "text": "".join(current_segment["words"]),
+                                "confidence": 0.9,
+                            })
+                            
+                            current_segment = {"words": [], "start": None, "end": None}
+                            segment_id += 1
+                
+                # Add final segment if it has content
+                if current_segment["words"]:
+                    segments.append({
+                        "id": segment_id,
+                        "start": current_segment["start"],
+                        "end": current_segment["end"],
+                        "text": "".join(current_segment["words"]),
+                        "confidence": 0.9,
+                    })
+        
+        # Fallback: Create segments based on text length if no timestamps available
+        if not segments:
             text = asr_result.get("text", "")
             if text:
-                segments.append({
-                    "id": 0,
-                    "start": 0.0,
-                    "end": 60.0,  # Estimate based on typical speech length
-                    "text": text,
-                    "confidence": 0.9,
-                })
+                logger.warning("No timestamp information available, creating segments based on text length")
+                # Split text into sentences
+                import re
+                sentences = re.split(r'[。！？.!?]+', text)
+                sentences = [s.strip() for s in sentences if s.strip()]
+                
+                if sentences:
+                    # Estimate duration per character (Chinese: ~0.3s/char, English: ~0.1s/char)
+                    is_chinese = any('\u4e00' <= char <= '\u9fff' for char in text)
+                    char_duration = 0.3 if is_chinese else 0.1
+                    
+                    current_time = 0.0
+                    for i, sentence in enumerate(sentences):
+                        duration = len(sentence) * char_duration
+                        segments.append({
+                            "id": i,
+                            "start": current_time,
+                            "end": current_time + duration,
+                            "text": sentence,
+                            "confidence": 0.8,  # Lower confidence for estimated timestamps
+                        })
+                        current_time += duration
+                else:
+                    # Single segment fallback
+                    segments.append({
+                        "id": 0,
+                        "start": 0.0,
+                        "end": len(text) * 0.2,  # Rough estimate
+                        "text": text,
+                        "confidence": 0.7,  # Even lower confidence
+                    })
         
+        logger.info(f"Converted to {len(segments)} segments")
         return segments
 
     def _estimate_confidence(self, asr_result: dict, segments: list[dict]) -> float:
