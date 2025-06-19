@@ -6,6 +6,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
+# Import new specialized types
+from .vad_types import VADProcessor, VADResult, VADSegment
+from .punctuation_types import PunctuationProcessor, PunctuationResult
+
 if TYPE_CHECKING:
     from video_asr_summary.analysis import AnalysisResult
 
@@ -160,3 +164,31 @@ class Pipeline(ABC):
     def process(self, video_path: Path) -> PipelineResult:
         """Process video through the complete pipeline."""
         pass
+
+
+# Export all public types and interfaces
+__all__ = [
+    # Data classes
+    "VideoInfo",
+    "AudioData", 
+    "SpeakerSegment",
+    "DiarizationResult",
+    "TranscriptionResult",
+    "EnhancedTranscriptionResult",
+    "SummaryResult",
+    "PipelineResult",
+    # VAD types
+    "VADProcessor",
+    "VADResult", 
+    "VADSegment",
+    # Punctuation types
+    "PunctuationProcessor",
+    "PunctuationResult",
+    # Abstract processors
+    "VideoProcessor",
+    "ASRProcessor",
+    "SpeakerDiarizationProcessor", 
+    "ASRDiarizationIntegrator",
+    "SummarizationProcessor",
+    "Pipeline",
+]

@@ -22,9 +22,8 @@ class OpenAICompatibleClient(LLMClient):
     def __init__(
         self, 
         api_key: Optional[str] = None,
-        base_url: str = "https://openai.newbotai.cn/v1",  
-        # model: str = "gemini-2.5-pro-exp-03-25",
-        model: str = "gemini-2.5-pro-exp-03-25",
+        base_url: str = "https://api.deepseek.com/v1",  
+        model: str = "deepseek-chat",
         timeout: int = 300
     ):
         """Initialize the OpenAI-compatible client.

@@ -22,7 +22,7 @@ except ImportError:
 
 try:
     from video_asr_summary.asr.whisper_processor import WhisperProcessor
-    from video_asr_summary.asr.funasr_processor import FunASRProcessor
+    from video_asr_summary.integration.specialized_asr_integrator import SpecializedASRIntegrator
     ASR_PROCESSOR_AVAILABLE = True
 except ImportError:
     ASR_PROCESSOR_AVAILABLE = False
@@ -53,8 +53,8 @@ class PipelineOrchestrator:
     def __init__(
         self, 
         output_dir: Union[str, Path],
-        llm_model: str = "gemini-2.5-pro-preview-03-25",
-        llm_endpoint: str = "https://openai.newbotai.cn/v1", 
+        llm_model: str = "deepseek-chat",
+        llm_endpoint: str = "https://api.deepseek.com/v1", 
         llm_timeout: int = 1200
     ):
         """Initialize pipeline orchestrator."""
@@ -344,8 +344,16 @@ class PipelineOrchestrator:
             )
         else:
             try:
-                # Use language-appropriate ASR processor
-                transcription = asr_processor.transcribe(audio_data.file_path)
+                # Check if it's the specialized integrator
+                if isinstance(asr_processor, SpecializedASRIntegrator):
+                    # Use the specialized 4-model pipeline
+                    enhanced_result = asr_processor.process_audio(audio_data.file_path)
+                    # Extract the transcription part for the traditional pipeline
+                    transcription = enhanced_result.transcription
+                    print("✅ Used SpecializedASRIntegrator (4-model pipeline)")
+                else:
+                    # Use traditional ASR processor
+                    transcription = asr_processor.transcribe(audio_data.file_path)
             except Exception as e:
                 self.state_manager.fail_step(state, step_name, str(e))
                 raise
@@ -702,22 +710,14 @@ class PipelineOrchestrator:
         if not ASR_PROCESSOR_AVAILABLE:
             return None
             
-        # Use FunASR for Chinese languages, Whisper for others
-        if language.lower() in ['zh', 'zh-cn', 'zh-tw', 'chinese', 'mandarin']:
-            try:
-                print("🇨🇳 Using FunASR processor for Chinese language")
-                # Use Chinese-specific FunASR model with better punctuation
-                return FunASRProcessor(
-                    model_path="iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
-                    language="zn",  # FunASR Chinese language code
-                    device="auto"   # Auto-select best available device (MPS/CUDA/CPU)
-                )
-            except Exception as e:
-                print(f"⚠️  Could not initialize FunASR processor: {e}")
-                print("🔄 Falling back to Whisper processor")
-                return WhisperProcessor(language="zh")
-        else:
-            print("🌍 Using Whisper processor for non-Chinese language")
+        # Use specialized integrator for all languages
+        try:
+            print("🔧 Using SpecializedASRIntegrator (4-model pipeline)")
+            # The specialized integrator handles VAD, ASR, punctuation, and diarization
+            return SpecializedASRIntegrator(device="auto")
+        except Exception as e:
+            print(f"⚠️  Could not initialize SpecializedASRIntegrator: {e}")
+            print("🔄 Falling back to Whisper processor")
             # Map common language codes for Whisper
             whisper_lang = language.lower()
             if whisper_lang in ['en', 'english']:
@@ -726,6 +726,8 @@ class PipelineOrchestrator:
                 whisper_lang = "ja"
             elif whisper_lang in ['ko', 'korean']:
                 whisper_lang = "ko"
+            elif whisper_lang in ['zh', 'zh-cn', 'zh-tw', 'chinese', 'mandarin']:
+                whisper_lang = "zh"
             else:
                 whisper_lang = None  # Let Whisper auto-detect
                 
