@@ -1,6 +1,5 @@
 """Integration of specialized VAD, ASR, punctuation, and diarization processors."""
 import time
-import re
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -61,20 +60,33 @@ class SpecializedASRIntegrator:
                 processing_time_seconds=vad_time
             )
 
-        # Step 2: ASR on full audio
+        # Step 2: ASR on full audio - get both regular and character-level results
         asr_result: TranscriptionResult = self._asr_processor.transcribe(audio_path)
+        
+        # Get character-level segments for punctuation-aware processing
+        try:
+            # Try to get character-level segments (FunASR-specific)
+            raw_text, character_segments = self._asr_processor.get_character_level_segments(audio_path)  # type: ignore
+        except (AttributeError, Exception):
+            # Fallback for non-FunASR processors
+            raw_text = asr_result.text
+            character_segments = asr_result.segments
 
         # Step 3: Punctuation restoration
-        punc_result: PunctuationResult = self._punctuation_processor.restore_punctuation(asr_result.text)
+        punc_result: PunctuationResult = self._punctuation_processor.restore_punctuation(raw_text)
 
-        # Split punctuated text into segments
-        split_segments = self._split_punctuated_text_to_segments(punc_result.text, asr_result.segments)
+        # Step 4: NEW APPROACH - Combine character-level timing with punctuation boundaries
+        optimized_segments = self._create_punctuation_aware_segments(
+            punc_result.text, 
+            character_segments,
+            raw_text
+        )
 
-        # Step 4: Diarization on full audio
+        # Step 5: Diarization on full audio
         diarization_result: DiarizationResult = self._diarization_processor.diarize(audio_path)
 
-        # Step 5: Attribute speakers to segments
-        speaker_segments = self._attribute_speakers_to_segments(split_segments, diarization_result.segments)
+        # Step 6: Attribute speakers to segments
+        speaker_segments = self._attribute_speakers_to_segments(optimized_segments, diarization_result.segments)
 
         # Safely sum processing times (None -> 0)
         asr_time = asr_result.processing_time_seconds or 0.0
@@ -86,7 +98,7 @@ class SpecializedASRIntegrator:
             transcription=TranscriptionResult(
                 text=punc_result.text,
                 confidence=punc_result.confidence,
-                segments=split_segments,
+                segments=optimized_segments,
                 language=asr_result.language,
                 processing_time_seconds=total_asr_punc
             ),
@@ -95,28 +107,194 @@ class SpecializedASRIntegrator:
             processing_time_seconds=total_time
         )
 
-    def _split_punctuated_text_to_segments(
+    def _create_punctuation_aware_segments(
         self,
         punctuated_text: str,
-        original_segments: List[Dict[str, Any]]
+        character_segments: List[Dict[str, Any]],
+        original_text: str
     ) -> List[Dict[str, Any]]:
-        """Split restored punctuation text into the original segments based on punctuation."""
-        # Split by sentence-ending punctuation (including comma)
-        sentences = re.findall(r'.+?[，。！？；：]|.+$', punctuated_text)
-        segments: List[Dict[str, Any]] = []
-        for idx, orig in enumerate(original_segments):
-            # Default start/end to 0 if missing
-            start = orig.get("start") or 0.0
-            end = orig.get("end") or 0.0
-            text = sentences[idx] if idx < len(sentences) else orig.get("text", "")
-            segments.append({
-                "id": orig.get("id"),
-                "start": start,
-                "end": end,
-                "text": text,
-                "confidence": orig.get("confidence") or 0.0,
-            })
+        """Create segments using punctuation boundaries with character-level timing.
+        
+        This method combines:
+        1. Character-level timing precision from FunASR
+        2. Natural linguistic boundaries from punctuation model
+        
+        Args:
+            punctuated_text: Text with restored punctuation
+            character_segments: Character-level segments from ASR with precise timing
+            original_text: Original unpunctuated text for alignment
+            
+        Returns:
+            List of optimized segments with punctuation-based boundaries and precise timing
+        """
+        if not character_segments or not punctuated_text:
+            return []
+        
+        # Step 1: Find punctuation boundaries in the punctuated text
+        punctuation_boundaries = self._find_punctuation_boundaries(punctuated_text)
+        
+        # Step 2: Map punctuation boundaries to character positions in original text
+        char_to_punc_mapping = self._align_original_to_punctuated_text(original_text, punctuated_text)
+        
+        # Step 3: Create segments based on punctuation boundaries using character timing
+        optimized_segments = self._build_segments_from_boundaries(
+            punctuation_boundaries,
+            char_to_punc_mapping,
+            character_segments,
+            punctuated_text
+        )
+        
+        return optimized_segments
+
+    def _find_punctuation_boundaries(self, punctuated_text: str) -> List[int]:
+        """Find character positions where natural segment boundaries should occur.
+        
+        Args:
+            punctuated_text: Text with punctuation
+            
+        Returns:
+            List of character positions marking segment boundaries
+        """
+        boundaries = [0]  # Start with beginning of text
+        
+        # Chinese punctuation marks that indicate natural boundaries
+        sentence_endings = ['，', '。', '！', '？', '；', '：']
+        
+        for i, char in enumerate(punctuated_text):
+            if char in sentence_endings:
+                # Add position after the punctuation mark
+                if i + 1 < len(punctuated_text):
+                    boundaries.append(i + 1)
+        
+        # Always include the end of text
+        if boundaries[-1] != len(punctuated_text):
+            boundaries.append(len(punctuated_text))
+        
+        return boundaries
+
+    def _align_original_to_punctuated_text(self, original_text: str, punctuated_text: str) -> Dict[int, int]:
+        """Create mapping from original text positions to punctuated text positions.
+        
+        Args:
+            original_text: Text without punctuation (from ASR)
+            punctuated_text: Text with restored punctuation
+            
+        Returns:
+            Dict mapping original_pos -> punctuated_pos
+        """
+        mapping = {}
+        orig_idx = 0
+        punc_idx = 0
+        
+        # Skip whitespace and align characters
+        while orig_idx < len(original_text) and punc_idx < len(punctuated_text):
+            orig_char = original_text[orig_idx]
+            punc_char = punctuated_text[punc_idx]
+            
+            if orig_char == punc_char:
+                # Characters match - create mapping
+                mapping[orig_idx] = punc_idx
+                orig_idx += 1
+                punc_idx += 1
+            elif punc_char in ['，', '。', '！', '？', '；', '：', ' ']:
+                # Punctuation or space in punctuated text - skip
+                punc_idx += 1
+            elif orig_char == ' ':
+                # Space in original - skip
+                orig_idx += 1
+            else:
+                # Characters don't match - advance both (fallback)
+                mapping[orig_idx] = punc_idx
+                orig_idx += 1
+                punc_idx += 1
+        
+        return mapping
+
+    def _build_segments_from_boundaries(
+        self,
+        punctuation_boundaries: List[int],
+        char_mapping: Dict[int, int],
+        character_segments: List[Dict[str, Any]],
+        punctuated_text: str
+    ) -> List[Dict[str, Any]]:
+        """Build final segments using punctuation boundaries and character timing.
+        
+        Args:
+            punctuation_boundaries: Positions in punctuated text where segments should break
+            char_mapping: Mapping from original text positions to punctuated text positions  
+            character_segments: Character-level segments with timing info
+            punctuated_text: Full punctuated text
+            
+        Returns:
+            List of segments with punctuation-based text and character-level timing
+        """
+        segments = []
+        
+        for i in range(len(punctuation_boundaries) - 1):
+            start_boundary = punctuation_boundaries[i]
+            end_boundary = punctuation_boundaries[i + 1]
+            
+            # Extract text for this segment from punctuated text
+            segment_text = punctuated_text[start_boundary:end_boundary].strip()
+            
+            if not segment_text:
+                continue
+            
+            # Find corresponding character segments for timing
+            # This is approximate - we map punctuation boundaries to character segments
+            start_char_idx = self._find_closest_character_index(start_boundary, char_mapping, character_segments)
+            end_char_idx = self._find_closest_character_index(end_boundary, char_mapping, character_segments)
+            
+            # Get timing from character segments
+            if start_char_idx < len(character_segments) and end_char_idx <= len(character_segments):
+                start_time = character_segments[start_char_idx].get("start", 0.0)
+                end_time = character_segments[min(end_char_idx - 1, len(character_segments) - 1)].get("end", start_time + 1.0)
+                
+                # Calculate average confidence from character segments in this range
+                confidences = [
+                    character_segments[j].get("confidence", 0.9) 
+                    for j in range(start_char_idx, min(end_char_idx, len(character_segments)))
+                ]
+                avg_confidence = sum(confidences) / len(confidences) if confidences else 0.9
+                
+                segments.append({
+                    "id": len(segments),
+                    "start": start_time,
+                    "end": end_time,
+                    "text": segment_text,
+                    "confidence": avg_confidence
+                })
+        
         return segments
+
+    def _find_closest_character_index(
+        self, 
+        punctuation_pos: int, 
+        char_mapping: Dict[int, int], 
+        character_segments: List[Dict[str, Any]]
+    ) -> int:
+        """Find the character segment index closest to a punctuation boundary position.
+        
+        Args:
+            punctuation_pos: Position in punctuated text
+            char_mapping: Mapping from original to punctuated text positions
+            character_segments: List of character-level segments
+            
+        Returns:
+            Index in character_segments list
+        """
+        # Find the original text position that maps closest to punctuation_pos
+        best_orig_pos = 0
+        min_distance = float('inf')
+        
+        for orig_pos, punc_pos in char_mapping.items():
+            distance = abs(punc_pos - punctuation_pos)
+            if distance < min_distance:
+                min_distance = distance
+                best_orig_pos = orig_pos
+        
+        # Return the index, ensuring it's within bounds
+        return min(best_orig_pos, len(character_segments) - 1)
 
     def _attribute_speakers_to_segments(
         self,

@@ -1,7 +1,6 @@
 """FunASR-based specialized ASR processor for Chinese speech recognition."""
 
 import logging
-import re
 import time
 from pathlib import Path
 from typing import Optional, Any
@@ -118,7 +117,7 @@ class FunASRSpecializedProcessor(ASRProcessor):
             raise Exception(f"Failed to initialize FunASR ASR model: {str(e)}") from e
 
     def transcribe(self, audio_path: Path) -> TranscriptionResult:
-        """Transcribe audio to text using FunASR.
+        """Transcribe audio to text using FunASR with proper character-level alignment.
 
         Args:
             audio_path: Path to audio file
@@ -157,28 +156,30 @@ class FunASRSpecializedProcessor(ASRProcessor):
             asr_result = result[0]
             raw_text = asr_result.get("text", "")
             
-            # Fix Chinese character spacing issue
-            text = self._fix_chinese_spacing(raw_text)
-
-            # Convert FunASR segments to our format
-            segments = self._convert_segments(asr_result)
+            # NEW APPROACH: Split raw text by spaces to get character pieces
+            char_pieces = self._split_text_to_characters(raw_text)
             
-            # Apply spacing fix to segment texts as well
-            for segment in segments:
-                segment["text"] = self._fix_chinese_spacing(segment["text"])
+            # Get raw segments from FunASR
+            raw_segments = asr_result.get("timestamp", [])
+            
+            # Map each segment to a character piece (1:1 mapping)
+            character_segments = self._map_segments_to_characters(raw_segments, char_pieces)
+            
+            # Combine character segments using VAD/punctuation info for proper text
+            final_text, final_segments = self._combine_character_segments(character_segments)
 
             # Estimate confidence (FunASR doesn't provide direct confidence scores)
-            confidence = self._estimate_confidence(asr_result, segments)
+            confidence = self._estimate_confidence(asr_result, final_segments)
 
             # Detect language if auto mode
-            detected_language = self._detect_language(text, self.language)
+            detected_language = self._detect_language(final_text, self.language)
 
-            logger.info(f"ASR transcribed {len(text)} characters with {len(segments)} segments")
+            logger.info(f"ASR transcribed {len(final_text)} characters with {len(final_segments)} segments")
 
             return TranscriptionResult(
-                text=text,
+                text=final_text,
                 confidence=confidence,
-                segments=segments,
+                segments=final_segments,
                 language=detected_language,
                 processing_time_seconds=processing_time,
             )
@@ -186,81 +187,127 @@ class FunASRSpecializedProcessor(ASRProcessor):
         except Exception as e:
             raise Exception(f"FunASR ASR transcription failed: {str(e)}") from e
 
-    def _fix_chinese_spacing(self, text: str) -> str:
-        """Fix spacing between Chinese characters that some ASR models add.
+    def _split_text_to_characters(self, raw_text: str) -> list[str]:
+        """Split raw spaced text into character pieces.
         
         Args:
-            text: Input text potentially with extra spaces between Chinese characters
+            raw_text: Raw text from FunASR (e.g., "你 好 世 界")
             
         Returns:
-            Text with fixed Chinese character spacing
+            List of character pieces (e.g., ["你", "好", "世", "界"])
         """
-        if not text:
-            return text
+        if not raw_text:
+            return []
         
-        # Pattern to match Chinese character/punctuation followed by space followed by Chinese character/punctuation
-        # \u4e00-\u9fff is the Unicode range for Chinese characters
-        # Include common Chinese punctuation marks
-        chinese_chars = r'[\u4e00-\u9fff]'
-        chinese_punct = r'[，。！？；：（）【】]'
+        # Split by whitespace and filter out empty strings
+        pieces = [piece.strip() for piece in raw_text.split() if piece.strip()]
         
-        # Combine patterns
-        chinese_all = f'({chinese_chars}|{chinese_punct})'
-        pattern = f'{chinese_all}\\s+{chinese_all}'
-        
-        # Keep applying the fix until no more matches (handles multiple consecutive Chinese chars)
-        prev_text = ""
-        while prev_text != text:
-            prev_text = text
-            text = re.sub(pattern, r'\1\2', text)
-        
-        return text
+        logger.debug(f"Split text into {len(pieces)} character pieces: {pieces}")
+        return pieces
 
-    def _convert_segments(self, asr_result: dict) -> list[dict]:
-        """Convert FunASR segments to standard format.
+    def _map_segments_to_characters(self, raw_segments: list, char_pieces: list[str]) -> list[dict]:
+        """Map FunASR segments to character pieces with 1:1 correspondence.
         
         Args:
-            asr_result: Raw FunASR result
+            raw_segments: Raw timestamp segments from FunASR
+            char_pieces: Character pieces split from raw text
             
         Returns:
-            List of segment dictionaries
+            List of character-level segments with timing info
         """
-        segments = []
+        character_segments = []
         
-        # Look for 'timestamp' field (sentence-level)
-        raw_segments = asr_result.get("timestamp", [])
+        if not raw_segments or not char_pieces:
+            logger.warning("No segments or character pieces available")
+            return character_segments
         
-        if isinstance(raw_segments, list) and raw_segments:
-            logger.info(f"Found {len(raw_segments)} timestamp segments")
-            for i, segment_info in enumerate(raw_segments):
-                if isinstance(segment_info, list) and len(segment_info) >= 2:
-                    # Format: [start_ms, end_ms, text] or [start_ms, end_ms]
-                    start_ms, end_ms = segment_info[0], segment_info[1]
-                    segment_text = segment_info[2] if len(segment_info) > 2 else ""
-                    
-                    segments.append({
-                        "id": i,
-                        "start": start_ms / 1000.0,  # Convert to seconds
-                        "end": end_ms / 1000.0,
-                        "text": segment_text,
-                        "confidence": 0.9,  # Default confidence for FunASR
-                    })
+        # Ensure we have the same number of segments and characters
+        if len(raw_segments) != len(char_pieces):
+            logger.warning(
+                f"Segment count ({len(raw_segments)}) != character count ({len(char_pieces)}). "
+                "This may indicate a timing alignment issue."
+            )
+            # Take minimum to avoid index errors
+            min_count = min(len(raw_segments), len(char_pieces))
+            raw_segments = raw_segments[:min_count]
+            char_pieces = char_pieces[:min_count]
         
-        # Fallback: Create a single segment if no timestamps available
-        if not segments:
-            text = asr_result.get("text", "")
-            if text:
-                logger.warning("No timestamp information available, creating single segment")
-                segments.append({
-                    "id": 0,
-                    "start": 0.0,
-                    "end": len(text) * 0.15,  # Rough estimate based on character count
-                    "text": text,
-                    "confidence": 0.8,  # Lower confidence for estimated timestamps
+        # Map each segment to its corresponding character
+        for i, (segment_info, character) in enumerate(zip(raw_segments, char_pieces)):
+            if isinstance(segment_info, list) and len(segment_info) >= 2:
+                start_ms, end_ms = segment_info[0], segment_info[1]
+                
+                character_segments.append({
+                    "id": i,
+                    "start": start_ms / 1000.0,  # Convert to seconds
+                    "end": end_ms / 1000.0,
+                    "text": character,  # Single character or token
+                    "confidence": 0.9,
+                    "is_character_level": True  # Flag for post-processing
                 })
         
-        logger.info(f"Converted to {len(segments)} segments")
-        return segments
+        logger.info(f"Mapped {len(character_segments)} character-level segments")
+        return character_segments
+
+    def _combine_character_segments(self, character_segments: list[dict]) -> tuple[str, list[dict]]:
+        """Combine character-level segments into proper text with punctuation.
+        
+        This is where VAD and punctuation model results would be integrated
+        to form natural text segments.
+        
+        Args:
+            character_segments: List of character-level segments
+            
+        Returns:
+            Tuple of (final_text, final_segments)
+        """
+        if not character_segments:
+            return "", []
+        
+        # For now, implement a simple combination strategy
+        # TODO: Integrate with VAD and punctuation models here
+        
+        final_text = "".join(seg["text"] for seg in character_segments)
+        
+        # Create larger segments by grouping characters
+        # This is a placeholder - should use VAD/punctuation boundaries
+        final_segments = []
+        current_segment = {
+            "start": character_segments[0]["start"],
+            "text": "",
+            "confidence": 0.0
+        }
+        
+        segment_length_threshold = 10  # Characters per segment
+        
+        for i, char_seg in enumerate(character_segments):
+            current_segment["text"] += char_seg["text"]
+            current_segment["confidence"] += char_seg["confidence"]
+            
+            # Break segment on punctuation or length threshold
+            should_break = (
+                char_seg["text"] in "，。！？；：" or  # Chinese punctuation
+                len(current_segment["text"]) >= segment_length_threshold or
+                i == len(character_segments) - 1  # Last character
+            )
+            
+            if should_break:
+                current_segment["end"] = char_seg["end"]
+                current_segment["confidence"] /= len(current_segment["text"])
+                current_segment["id"] = len(final_segments)
+                
+                final_segments.append(current_segment.copy())
+                
+                # Start new segment if not the last character
+                if i < len(character_segments) - 1:
+                    current_segment = {
+                        "start": character_segments[i + 1]["start"],
+                        "text": "",
+                        "confidence": 0.0
+                    }
+        
+        logger.info(f"Combined into {len(final_segments)} final segments")
+        return final_text, final_segments
 
     def _estimate_confidence(self, asr_result: dict, segments: list[dict]) -> float:
         """Estimate confidence score for FunASR results.
@@ -322,3 +369,54 @@ class FunASRSpecializedProcessor(ASRProcessor):
             return "zh"
         else:
             return "en"  # Default fallback
+
+    def get_character_level_segments(self, audio_path: Path) -> tuple[str, list[dict]]:
+        """Get character-level segments without combining them.
+        
+        This method is used by the punctuation-aware integrator to get raw 
+        character-level timing information.
+        
+        Args:
+            audio_path: Path to audio file
+            
+        Returns:
+            Tuple of (raw_text_without_spaces, character_level_segments)
+        """
+        if not audio_path.exists():
+            raise FileNotFoundError(f"Audio file not found: {audio_path}")
+
+        self._initialize_model()
+        assert self._model is not None, "ASR model failed to initialize"
+
+        try:
+            # Call FunASR ASR model
+            result = self._model.generate(
+                input=str(audio_path),
+                cache={},
+                language=self.language,
+                use_itn=True,
+                batch_size_s=120,
+            )
+
+            if not result or len(result) == 0:
+                raise Exception("No transcription result returned from FunASR ASR")
+
+            asr_result = result[0]
+            raw_text = asr_result.get("text", "")
+            
+            # Split raw text by spaces to get character pieces
+            char_pieces = self._split_text_to_characters(raw_text)
+            
+            # Get raw segments from FunASR
+            raw_segments = asr_result.get("timestamp", [])
+            
+            # Map each segment to a character piece (1:1 mapping)
+            character_segments = self._map_segments_to_characters(raw_segments, char_pieces)
+            
+            # Return raw text without spaces and character-level segments
+            raw_text_no_spaces = "".join(char_pieces)
+            
+            return raw_text_no_spaces, character_segments
+
+        except Exception as e:
+            raise Exception(f"FunASR character-level extraction failed: {str(e)}") from e
