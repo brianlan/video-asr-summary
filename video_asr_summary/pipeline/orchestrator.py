@@ -343,23 +343,31 @@ class PipelineOrchestrator:
                 processing_time_seconds=2.5
             )
         else:
+            enhanced_result = None
             try:
                 # Check if it's the specialized integrator
-                if isinstance(asr_processor, SpecializedASRIntegrator):
+                if hasattr(asr_processor, 'process_audio'):
                     # Use the specialized 4-model pipeline
-                    enhanced_result = asr_processor.process_audio(audio_data.file_path)
+                    enhanced_result = asr_processor.process_audio(audio_data.file_path)  # type: ignore
                     # Extract the transcription part for the traditional pipeline
                     transcription = enhanced_result.transcription
                     print("✅ Used SpecializedASRIntegrator (4-model pipeline)")
                 else:
                     # Use traditional ASR processor
-                    transcription = asr_processor.transcribe(audio_data.file_path)
+                    transcription = asr_processor.transcribe(audio_data.file_path)  # type: ignore
             except Exception as e:
                 self.state_manager.fail_step(state, step_name, str(e))
                 raise
         
         try:
+            # Save transcription (for backward compatibility)
             self.state_manager.save_transcription(state, transcription)
+            
+            # Save enhanced result if available
+            if enhanced_result is not None:
+                self.state_manager.save_enhanced_transcription(state, enhanced_result)
+                print("✅ Enhanced transcription result saved")
+            
             self.state_manager.complete_step(state, step_name)
             print(f"✅ Transcription completed: {len(transcription.text)} characters, {transcription.confidence:.2f} confidence")
             return transcription
@@ -698,7 +706,7 @@ class PipelineOrchestrator:
         """Clean up intermediate files."""
         self.state_manager.cleanup_intermediate_files(keep_final_result)
     
-    def _get_asr_processor(self, language: str):
+    def _get_asr_processor(self, language: str) -> Optional[Union['WhisperProcessor', 'SpecializedASRIntegrator']]:
         """Get appropriate ASR processor based on language.
         
         Args:

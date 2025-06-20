@@ -78,6 +78,28 @@ class EnhancedTranscriptionResult:
     speaker_attributed_segments: list[Dict[str, Any]]  # Segments with speaker info
     processing_time_seconds: Optional[float] = None
 
+    def get_speaker_attributed_transcription_segments(self) -> list[Dict[str, Any]]:
+        """Get transcription segments with speaker attribution merged.
+
+        Returns:
+            List of segments where each segment includes speaker information
+        """
+        return self.speaker_attributed_segments.copy()
+
+    def to_speaker_attributed_transcription(self) -> TranscriptionResult:
+        """Create a TranscriptionResult with speaker-attributed segments.
+
+        Returns:
+            TranscriptionResult where segments include speaker information
+        """
+        return TranscriptionResult(
+            text=self.transcription.text,
+            confidence=self.transcription.confidence,
+            segments=self.speaker_attributed_segments.copy(),
+            language=self.transcription.language,
+            processing_time_seconds=self.transcription.processing_time_seconds,
+        )
+
 
 @dataclass
 class SummaryResult:
@@ -170,7 +192,7 @@ class Pipeline(ABC):
 __all__ = [
     # Data classes
     "VideoInfo",
-    "AudioData", 
+    "AudioData",
     "SpeakerSegment",
     "DiarizationResult",
     "TranscriptionResult",
@@ -179,7 +201,7 @@ __all__ = [
     "PipelineResult",
     # VAD types
     "VADProcessor",
-    "VADResult", 
+    "VADResult",
     "VADSegment",
     # Punctuation types
     "PunctuationProcessor",
@@ -187,7 +209,7 @@ __all__ = [
     # Abstract processors
     "VideoProcessor",
     "ASRProcessor",
-    "SpeakerDiarizationProcessor", 
+    "SpeakerDiarizationProcessor",
     "ASRDiarizationIntegrator",
     "SummarizationProcessor",
     "Pipeline",
