@@ -202,7 +202,7 @@ class PipelineOrchestrator:
             # Optimization: Skip separate diarization if using SpecializedASRIntegrator
             # since it does VAD + ASR + Punctuation + Diarization internally
             if self._is_using_specialized_asr(analysis_language):
-                print("🔧 Using SpecializedASRIntegrator - skipping separate diarization step")
+                print("🔧 Using SpecializedASRIntegrator (Chinese-optimized) - skipping separate diarization step")
                 diarization = None
                 transcription = self._transcribe_audio(state, audio_data)
                 # Check if enhanced result is available from SpecializedASRIntegrator
@@ -211,7 +211,7 @@ class PipelineOrchestrator:
                     # Fallback: create enhanced transcription without speaker info
                     enhanced_transcription = self._integrate_diarization(state, transcription, None)
             else:
-                print("🔧 Using traditional ASR pipeline with separate diarization")
+                print("🔧 Using Whisper + Pyannote pipeline with separate diarization")
                 diarization = self._diarize_speakers(state, audio_data)
                 transcription = self._transcribe_audio(state, audio_data)
                 enhanced_transcription = self._integrate_diarization(state, transcription, diarization)
@@ -741,15 +741,23 @@ class PipelineOrchestrator:
         """
         if not ASR_PROCESSOR_AVAILABLE:
             return None
-            
-        # Use specialized integrator for all languages
+        
+        # Language-aware ASR processor selection
+        language = language.lower()
+        
+        # Use SpecializedASRIntegrator (FunASR-based) for Chinese and related languages
+        if language in ['zh', 'zh-cn', 'zh-tw', 'chinese', 'mandarin']:
+            try:
+                print("🔧 Using SpecializedASRIntegrator (4-model pipeline) for Chinese")
+                # The specialized integrator handles VAD, ASR, punctuation, and diarization
+                return SpecializedASRIntegrator(device="auto")
+            except Exception as e:
+                print(f"⚠️  Could not initialize SpecializedASRIntegrator: {e}")
+                print("🔄 Falling back to Whisper processor")
+        
+        # Use Whisper for English and other languages (more robust for long audio)
+        print(f"🔧 Using Whisper processor for language: {language}")
         try:
-            print("🔧 Using SpecializedASRIntegrator (4-model pipeline)")
-            # The specialized integrator handles VAD, ASR, punctuation, and diarization
-            return SpecializedASRIntegrator(device="auto")
-        except Exception as e:
-            print(f"⚠️  Could not initialize SpecializedASRIntegrator: {e}")
-            print("🔄 Falling back to Whisper processor")
             # Map common language codes for Whisper
             whisper_lang = language.lower()
             if whisper_lang in ['en', 'english']:
@@ -764,6 +772,9 @@ class PipelineOrchestrator:
                 whisper_lang = None  # Let Whisper auto-detect
                 
             return WhisperProcessor(language=whisper_lang)
+        except Exception as e:
+            print(f"⚠️  Could not initialize Whisper processor: {e}")
+            return None
     
     def _diarization_to_dict(self, diarization: DiarizationResult) -> Dict[str, Any]:
         """Convert DiarizationResult to dictionary."""
@@ -797,5 +808,4 @@ class PipelineOrchestrator:
     
     def _load_enhanced_transcription_result(self, state: PipelineState) -> Optional[EnhancedTranscriptionResult]:
         """Load enhanced transcription result from saved file."""
-        # TODO: Implement when state manager supports enhanced transcription
-        return None
+        return self.state_manager.load_enhanced_transcription(state)
