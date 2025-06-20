@@ -198,9 +198,24 @@ class PipelineOrchestrator:
             # Execute pipeline steps
             video_info = self._extract_video_info(state, video_path)
             audio_data = self._extract_audio(state, video_path)
-            diarization = self._diarize_speakers(state, audio_data)
-            transcription = self._transcribe_audio(state, audio_data)
-            enhanced_transcription = self._integrate_diarization(state, transcription, diarization)
+            
+            # Optimization: Skip separate diarization if using SpecializedASRIntegrator
+            # since it does VAD + ASR + Punctuation + Diarization internally
+            if self._is_using_specialized_asr(analysis_language):
+                print("🔧 Using SpecializedASRIntegrator - skipping separate diarization step")
+                diarization = None
+                transcription = self._transcribe_audio(state, audio_data)
+                # Check if enhanced result is available from SpecializedASRIntegrator
+                enhanced_transcription = self.state_manager.load_enhanced_transcription(state)
+                if enhanced_transcription is None:
+                    # Fallback: create enhanced transcription without speaker info
+                    enhanced_transcription = self._integrate_diarization(state, transcription, None)
+            else:
+                print("🔧 Using traditional ASR pipeline with separate diarization")
+                diarization = self._diarize_speakers(state, audio_data)
+                transcription = self._transcribe_audio(state, audio_data)
+                enhanced_transcription = self._integrate_diarization(state, transcription, diarization)
+            
             analysis = self._analyze_content(state, enhanced_transcription)
             
             # Create final result
@@ -706,6 +721,15 @@ class PipelineOrchestrator:
         """Clean up intermediate files."""
         self.state_manager.cleanup_intermediate_files(keep_final_result)
     
+    def _is_using_specialized_asr(self, language: str) -> bool:
+        """Check if we'll be using SpecializedASRIntegrator for the given language."""
+        if not ASR_PROCESSOR_AVAILABLE:
+            return False
+        
+        # Check what processor would be returned
+        asr_processor = self._get_asr_processor(language)
+        return hasattr(asr_processor, 'process_audio')
+
     def _get_asr_processor(self, language: str) -> Optional[Union['WhisperProcessor', 'SpecializedASRIntegrator']]:
         """Get appropriate ASR processor based on language.
         
