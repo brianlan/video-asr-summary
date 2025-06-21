@@ -109,15 +109,8 @@ class OpenAICompatibleClient(LLMClient):
                 "temperature": 0.1,  # Low temperature for consistent analysis
             }
             
-            # Adjust max_tokens based on model
-            if "deepseek" in self.model.lower():
-                api_params["max_tokens"] = 4000  # DeepSeek models need more tokens
-            elif "gpt" in self.model.lower():
-                api_params["max_tokens"] = 3000  # GPT models are efficient
-            elif "qwen" in self.model.lower():
-                api_params["max_tokens"] = 3500  # Qwen models need reasonable space
-            else:
-                api_params["max_tokens"] = 2500  # Default for other models
+            # Remove max_tokens limit to allow arbitrary length responses for long transcriptions
+            # The model will generate as much content as needed for comprehensive analysis
             
             # Make API call
             response = self.client.chat.completions.create(**api_params)
