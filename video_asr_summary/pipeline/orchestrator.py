@@ -42,6 +42,7 @@ try:
     from video_asr_summary.analysis.classifier import KeywordBasedClassifier
     from video_asr_summary.analysis.llm_client import OpenAICompatibleClient
     from video_asr_summary.analysis.prompt_templates import DefaultPromptTemplateManager
+    from video_asr_summary.analysis.markdown_converter import MarkdownConverter
     ANALYSIS_AVAILABLE = True
 except ImportError:
     ANALYSIS_AVAILABLE = False
@@ -217,6 +218,7 @@ class PipelineOrchestrator:
                 enhanced_transcription = self._integrate_diarization(state, transcription, diarization)
             
             analysis = self._analyze_content(state, enhanced_transcription)
+            self._convert_analysis_to_markdown(state, analysis)
             
             # Create final result
             result = self._finalize_results(state, {
@@ -468,6 +470,64 @@ class PipelineOrchestrator:
         except Exception as e:
             self.state_manager.fail_step(state, step_name, str(e))
             raise
+    
+    def _convert_analysis_to_markdown(self, state: PipelineState, analysis: Optional[Any]) -> Optional[str]:
+        """Convert analysis results to markdown format."""
+        step_name = "markdown_conversion"
+        
+        if self.state_manager.is_step_completed(state, step_name):
+            print("⏭️  Markdown conversion already completed")
+            return self._load_markdown_result(state)
+        
+        if not analysis:
+            print("⚠️  No analysis available, skipping markdown conversion")
+            self.state_manager.complete_step(state, step_name)
+            return None
+            
+        if not ANALYSIS_AVAILABLE:
+            print("⚠️  Analysis components not available, skipping markdown conversion")
+            self.state_manager.complete_step(state, step_name)
+            return None
+        
+        print("📝 Converting analysis to markdown...")
+        self.state_manager.update_step(state, step_name)
+        
+        try:
+            # Convert analysis to dictionary format if it's an object
+            if hasattr(analysis, '__dict__'):
+                analysis_dict = self._analysis_to_dict(analysis)
+            else:
+                analysis_dict = analysis
+            
+            # Ensure we have a valid dictionary
+            if not isinstance(analysis_dict, dict):
+                print("⚠️  Invalid analysis data format, skipping markdown conversion")
+                self.state_manager.complete_step(state, step_name)
+                return None
+            
+            # Create markdown converter and save markdown file
+            converter = MarkdownConverter()
+            output_dir = Path(state.output_dir)
+            markdown_path = output_dir / "analysis.md"
+            converter.save_analysis_markdown(analysis_dict, markdown_path)
+            
+            self.state_manager.complete_step(state, step_name)
+            print("✅ Markdown conversion completed")
+            print(f"   📄 Saved to: {markdown_path}")
+            
+            return str(markdown_path)
+            
+        except Exception as e:
+            self.state_manager.fail_step(state, step_name, str(e))
+            raise
+
+    def _load_markdown_result(self, state: PipelineState) -> Optional[str]:
+        """Load markdown result from saved file."""
+        output_dir = Path(state.output_dir)
+        markdown_path = output_dir / "analysis.md"
+        if markdown_path.exists():
+            return str(markdown_path)
+        return None
     
     def _finalize_results(self, state: PipelineState, results: Dict[str, Any]) -> Dict[str, Any]:
         """Finalize and save complete results."""
