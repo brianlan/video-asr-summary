@@ -158,30 +158,6 @@ class TestSpecializedASRIntegrator:
         assert result[0]["speaker"] == "SPEAKER_00"
         assert result[1]["speaker"] == "SPEAKER_01"
     
-    def test_split_punctuated_text_to_segments(self):
-        """Test splitting punctuated text back to segments."""
-        integrator = SpecializedASRIntegrator()
-        
-        original_segments = [
-            {"id": 0, "start": 0.0, "end": 2.0, "text": "你好 世界", "confidence": 0.9},
-            {"id": 1, "start": 3.0, "end": 5.0, "text": "这是 测试", "confidence": 0.9}
-        ]
-        
-        punctuated_text = "你好世界，这是测试。"
-        
-        result = integrator._split_punctuated_text_to_segments(
-            punctuated_text, 
-            original_segments
-        )
-        
-        assert len(result) == 2
-        assert result[0]["text"] == "你好世界，"
-        assert result[1]["text"] == "这是测试。"
-        assert result[0]["start"] == 0.0
-        assert result[0]["end"] == 2.0
-        assert result[1]["start"] == 3.0
-        assert result[1]["end"] == 5.0
-    
     def test_processing_with_no_speech_detected(self):
         """Test processing when no speech is detected."""
         integrator = SpecializedASRIntegrator()

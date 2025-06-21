@@ -248,7 +248,13 @@ class SpecializedASRIntegrator:
             # Get timing from character segments
             if start_char_idx < len(character_segments) and end_char_idx <= len(character_segments):
                 start_time = character_segments[start_char_idx].get("start", 0.0)
-                end_time = character_segments[min(end_char_idx - 1, len(character_segments) - 1)].get("end", start_time + 1.0)
+                
+                # For end time, if end_char_idx == start_char_idx, use the same segment
+                # Otherwise, use the previous segment (end_char_idx - 1)
+                if end_char_idx == start_char_idx:
+                    end_time = character_segments[start_char_idx].get("end", start_time + 1.0)
+                else:
+                    end_time = character_segments[min(end_char_idx - 1, len(character_segments) - 1)].get("end", start_time + 1.0)
                 
                 # Calculate average confidence from character segments in this range
                 confidences = [
