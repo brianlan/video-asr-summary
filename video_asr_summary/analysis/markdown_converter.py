@@ -1,0 +1,145 @@
+"""Markdown converter for analysis results."""
+
+from pathlib import Path
+from typing import Dict, Any
+
+
+class MarkdownConverter:
+    """Converts analysis JSON to formatted markdown."""
+    
+    def convert_analysis_to_markdown(self, analysis_data: Dict[str, Any]) -> str:
+        """Convert analysis data to formatted markdown.
+        
+        Args:
+            analysis_data: Dictionary containing analysis results
+            
+        Returns:
+            Formatted markdown string
+        """
+        markdown_parts = []
+        
+        # Header
+        markdown_parts.append("# Video Analysis Report")
+        markdown_parts.append("")
+        
+        # Summary section
+        markdown_parts.append("## Summary")
+        markdown_parts.append("")
+        
+        # Metadata
+        if "content_type" in analysis_data:
+            markdown_parts.append(f"**Content Type:** {analysis_data['content_type']}")
+        if "overall_credibility" in analysis_data:
+            markdown_parts.append(f"**Overall Credibility:** {analysis_data['overall_credibility']}")
+        if "response_language" in analysis_data:
+            markdown_parts.append(f"**Analysis Language:** {analysis_data['response_language']}")
+        if "processing_time_seconds" in analysis_data:
+            markdown_parts.append(f"**Processing Time:** {analysis_data['processing_time_seconds']} seconds")
+        if "timestamp" in analysis_data:
+            markdown_parts.append(f"**Generated:** {analysis_data['timestamp']}")
+        
+        markdown_parts.append("")
+        
+        # Conclusions section
+        markdown_parts.append("## Conclusions")
+        markdown_parts.append("")
+        
+        conclusions = analysis_data.get("conclusions", [])
+        if not conclusions:
+            markdown_parts.append("No conclusions available.")
+        else:
+            for i, conclusion in enumerate(conclusions, 1):
+                markdown_parts.append(f"### Conclusion {i}")
+                markdown_parts.append("")
+                markdown_parts.append(conclusion.get("statement", ""))
+                markdown_parts.append("")
+                
+                if "confidence" in conclusion:
+                    confidence_pct = int(conclusion["confidence"] * 100)
+                    markdown_parts.append(f"**Confidence:** {confidence_pct}%")
+                
+                if "evidence_quality" in conclusion:
+                    markdown_parts.append(f"**Evidence Quality:** {conclusion['evidence_quality']}")
+                
+                markdown_parts.append("")
+                
+                # Supporting arguments
+                supporting_args = conclusion.get("supporting_arguments", [])
+                if supporting_args:
+                    markdown_parts.append("**Supporting Arguments:**")
+                    for arg in supporting_args:
+                        markdown_parts.append(f"- {arg}")
+                    markdown_parts.append("")
+                
+                # Logical issues
+                logical_issues = conclusion.get("logical_issues", [])
+                if logical_issues:
+                    issues_str = ", ".join(logical_issues)
+                    markdown_parts.append(f"**Logical Issues:** {issues_str}")
+                    markdown_parts.append("")
+        
+        # Key Insights section
+        markdown_parts.append("## Key Insights")
+        markdown_parts.append("")
+        
+        insights = analysis_data.get("key_insights", [])
+        if not insights:
+            markdown_parts.append("No key insights available.")
+        else:
+            for insight in insights:
+                markdown_parts.append(f"- {insight}")
+        
+        markdown_parts.append("")
+        
+        # Potential Biases section
+        markdown_parts.append("## Potential Biases")
+        markdown_parts.append("")
+        
+        biases = analysis_data.get("potential_biases", [])
+        if not biases:
+            markdown_parts.append("No potential biases identified.")
+        else:
+            for bias in biases:
+                # Split bias on first colon to separate name from description
+                if ":" in bias:
+                    bias_name, bias_desc = bias.split(":", 1)
+                    markdown_parts.append(f"- **{bias_name.strip()}:** {bias_desc.strip()}")
+                else:
+                    markdown_parts.append(f"- {bias}")
+        
+        markdown_parts.append("")
+        
+        # Factual Claims section
+        markdown_parts.append("## Factual Claims")
+        markdown_parts.append("")
+        
+        claims = analysis_data.get("factual_claims", [])
+        if not claims:
+            markdown_parts.append("No factual claims identified.")
+        else:
+            for i, claim in enumerate(claims, 1):
+                markdown_parts.append(f"{i}. {claim}")
+        
+        markdown_parts.append("")
+        
+        # Footer
+        markdown_parts.append("---")
+        markdown_parts.append("*Generated by Video ASR Summary Pipeline*")
+        
+        return "\n".join(markdown_parts)
+    
+    def save_analysis_markdown(self, analysis_data: Dict[str, Any], output_path: Path) -> None:
+        """Save analysis data as markdown file.
+        
+        Args:
+            analysis_data: Dictionary containing analysis results
+            output_path: Path where to save the markdown file
+        """
+        # Create parent directories if they don't exist
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Convert to markdown
+        markdown_content = self.convert_analysis_to_markdown(analysis_data)
+        
+        # Save to file
+        output_path.write_text(markdown_content, encoding='utf-8')

@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, List, Union, TYPE_CHECKING
-from video_asr_summary.core import AudioData, TranscriptionResult
+from video_asr_summary.core import AudioData, TranscriptionResult, EnhancedTranscriptionResult
 
 if TYPE_CHECKING:
     from video_asr_summary.analysis import AnalysisResult
@@ -28,6 +28,7 @@ class PipelineState:
     # Intermediate file paths
     audio_file: str = ""
     transcription_file: str = ""
+    enhanced_transcription_file: str = ""
     analysis_file: str = ""
     final_result_file: str = ""
     
@@ -58,6 +59,7 @@ class StateManager:
         self.file_patterns = {
             "audio": "audio.wav",
             "transcription": "transcription.json", 
+            "enhanced_transcription": "enhanced_transcription.json",
             "analysis": "analysis.json",
             "final_result": "pipeline_result.json"
         }
@@ -87,6 +89,7 @@ class StateManager:
         # Set intermediate file paths
         state.audio_file = str(self.output_dir / self.file_patterns["audio"])
         state.transcription_file = str(self.output_dir / self.file_patterns["transcription"])
+        state.enhanced_transcription_file = str(self.output_dir / self.file_patterns["enhanced_transcription"])
         state.analysis_file = str(self.output_dir / self.file_patterns["analysis"])
         state.final_result_file = str(self.output_dir / self.file_patterns["final_result"])
         
@@ -225,6 +228,55 @@ class StateManager:
         except (json.JSONDecodeError, FileNotFoundError):
             return None
     
+    def load_enhanced_transcription(self, state: PipelineState) -> Optional[EnhancedTranscriptionResult]:
+        """Load enhanced transcription result from saved file."""
+        if not state.enhanced_transcription_file or not os.path.exists(state.enhanced_transcription_file):
+            return None
+        
+        try:
+            with open(state.enhanced_transcription_file, 'r') as f:
+                data = json.load(f)
+            
+            # Reconstruct TranscriptionResult
+            transcription = TranscriptionResult(
+                text=data["transcription"]["text"],
+                confidence=data["transcription"]["confidence"],
+                segments=data["transcription"]["segments"],
+                language=data["transcription"].get("language"),
+                processing_time_seconds=data["transcription"].get("processing_time_seconds")
+            )
+            
+            # Reconstruct DiarizationResult
+            from video_asr_summary.core import DiarizationResult, SpeakerSegment
+            diarization_segments = [
+                SpeakerSegment(
+                    start=seg["start"],
+                    end=seg["end"],
+                    speaker=seg["speaker"],
+                    confidence=seg["confidence"]
+                )
+                for seg in data["diarization"]["segments"]
+            ]
+            
+            diarization = DiarizationResult(
+                segments=diarization_segments,
+                num_speakers=data["diarization"]["num_speakers"],
+                processing_time_seconds=data["diarization"].get("processing_time_seconds")
+            )
+            
+            # Reconstruct EnhancedTranscriptionResult
+            enhanced_result = EnhancedTranscriptionResult(
+                transcription=transcription,
+                diarization=diarization,
+                speaker_attributed_segments=data["speaker_attributed_segments"],
+                processing_time_seconds=data.get("processing_time_seconds")
+            )
+            
+            return enhanced_result
+            
+        except (json.JSONDecodeError, KeyError, FileNotFoundError):
+            return None
+    
     def is_step_completed(self, state: PipelineState, step_name: str) -> bool:
         """Check if a step has been completed."""
         return step_name in state.completed_steps
@@ -295,3 +347,37 @@ class StateManager:
             state.failed_step = None
             state.error_message = None
             self.save_state(state)
+    
+    def save_enhanced_transcription(self, state: PipelineState, enhanced_transcription: EnhancedTranscriptionResult) -> None:
+        """Save enhanced transcription result with speaker attribution."""
+        if not state.enhanced_transcription_file:
+            raise ValueError("Enhanced transcription file path not set in state")
+            
+        enhanced_data = {
+            "transcription": {
+                "text": enhanced_transcription.transcription.text,
+                "confidence": enhanced_transcription.transcription.confidence,
+                "segments": enhanced_transcription.transcription.segments,
+                "language": enhanced_transcription.transcription.language,
+                "processing_time_seconds": enhanced_transcription.transcription.processing_time_seconds
+            },
+            "diarization": {
+                "segments": [
+                    {
+                        "start": seg.start,
+                        "end": seg.end,
+                        "speaker": seg.speaker,
+                        "confidence": seg.confidence
+                    }
+                    for seg in enhanced_transcription.diarization.segments
+                ],
+                "num_speakers": enhanced_transcription.diarization.num_speakers,
+                "processing_time_seconds": enhanced_transcription.diarization.processing_time_seconds
+            },
+            "speaker_attributed_segments": enhanced_transcription.speaker_attributed_segments,
+            "processing_time_seconds": enhanced_transcription.processing_time_seconds,
+            "saved_at": datetime.now().isoformat()
+        }
+        
+        with open(state.enhanced_transcription_file, 'w', encoding='utf-8') as f:
+            json.dump(enhanced_data, f, indent=2, ensure_ascii=False)

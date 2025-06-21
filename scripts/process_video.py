@@ -73,14 +73,16 @@ Analysis Languages:
   zh (Chinese), ar (Arabic), hi (Hindi)
 
 Popular LLM Models:
-  - gemini-2.5-pro-preview-03-25 (default, good for Chinese)
+  - deepseek-chat (default, fast and cost-effective)
+  - gemini-2.5-pro-preview-03-25 (good for Chinese)
   - gpt-4, gpt-4-turbo, gpt-3.5-turbo (OpenAI)
   - qwen-max, qwen-plus (Alibaba Cloud)
   - glm-4, glm-3-turbo (Zhipu AI)
   - deepseek-chat (DeepSeek)
 
 Common Endpoints:
-  - https://openai.newbotai.cn/v1 (default, multi-model)
+  - https://api.deepseek.com/v1 (default, DeepSeek API)
+  - https://openai.newbotai.cn/v1 (multi-model gateway)
   - https://api.openai.com/v1 (OpenAI official)
   - https://dashscope.aliyuncs.com/compatible-mode/v1 (Alibaba)
   - https://api.deepseek.com/v1 (DeepSeek)
@@ -120,15 +122,15 @@ Common Endpoints:
     parser.add_argument(
         "--llm-model", "-m",
         type=str,
-        default="gemini-2.5-pro-preview-03-25",
-        help="LLM model name for content analysis (default: gemini-2.5-pro-preview-03-25)"
+        default="deepseek-chat",
+        help="LLM model name for content analysis (default: deepseek-chat)"
     )
     
     parser.add_argument(
         "--llm-endpoint", "-e",
         type=str,
-        default="https://openai.newbotai.cn/v1",
-        help="LLM API endpoint URL (default: https://openai.newbotai.cn/v1)"
+        default="https://api.deepseek.com/v1",
+        help="LLM API endpoint URL (default: https://api.deepseek.com/v1)"
     )
     
     parser.add_argument(

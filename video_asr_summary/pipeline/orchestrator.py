@@ -22,7 +22,7 @@ except ImportError:
 
 try:
     from video_asr_summary.asr.whisper_processor import WhisperProcessor
-    from video_asr_summary.asr.funasr_processor import FunASRProcessor
+    from video_asr_summary.integration.specialized_asr_integrator import SpecializedASRIntegrator
     ASR_PROCESSOR_AVAILABLE = True
 except ImportError:
     ASR_PROCESSOR_AVAILABLE = False
@@ -42,6 +42,7 @@ try:
     from video_asr_summary.analysis.classifier import KeywordBasedClassifier
     from video_asr_summary.analysis.llm_client import OpenAICompatibleClient
     from video_asr_summary.analysis.prompt_templates import DefaultPromptTemplateManager
+    from video_asr_summary.analysis.markdown_converter import MarkdownConverter
     ANALYSIS_AVAILABLE = True
 except ImportError:
     ANALYSIS_AVAILABLE = False
@@ -53,8 +54,8 @@ class PipelineOrchestrator:
     def __init__(
         self, 
         output_dir: Union[str, Path],
-        llm_model: str = "gemini-2.5-pro-preview-03-25",
-        llm_endpoint: str = "https://openai.newbotai.cn/v1", 
+        llm_model: str = "deepseek-chat",
+        llm_endpoint: str = "https://api.deepseek.com/v1", 
         llm_timeout: int = 1200
     ):
         """Initialize pipeline orchestrator."""
@@ -198,10 +199,26 @@ class PipelineOrchestrator:
             # Execute pipeline steps
             video_info = self._extract_video_info(state, video_path)
             audio_data = self._extract_audio(state, video_path)
-            diarization = self._diarize_speakers(state, audio_data)
-            transcription = self._transcribe_audio(state, audio_data)
-            enhanced_transcription = self._integrate_diarization(state, transcription, diarization)
+            
+            # Optimization: Skip separate diarization if using SpecializedASRIntegrator
+            # since it does VAD + ASR + Punctuation + Diarization internally
+            if self._is_using_specialized_asr(analysis_language):
+                print("🔧 Using SpecializedASRIntegrator (Chinese-optimized) - skipping separate diarization step")
+                diarization = None
+                transcription = self._transcribe_audio(state, audio_data)
+                # Check if enhanced result is available from SpecializedASRIntegrator
+                enhanced_transcription = self.state_manager.load_enhanced_transcription(state)
+                if enhanced_transcription is None:
+                    # Fallback: create enhanced transcription without speaker info
+                    enhanced_transcription = self._integrate_diarization(state, transcription, None)
+            else:
+                print("🔧 Using Whisper + Pyannote pipeline with separate diarization")
+                diarization = self._diarize_speakers(state, audio_data)
+                transcription = self._transcribe_audio(state, audio_data)
+                enhanced_transcription = self._integrate_diarization(state, transcription, diarization)
+            
             analysis = self._analyze_content(state, enhanced_transcription)
+            self._convert_analysis_to_markdown(state, analysis)
             
             # Create final result
             result = self._finalize_results(state, {
@@ -343,15 +360,31 @@ class PipelineOrchestrator:
                 processing_time_seconds=2.5
             )
         else:
+            enhanced_result = None
             try:
-                # Use language-appropriate ASR processor
-                transcription = asr_processor.transcribe(audio_data.file_path)
+                # Check if it's the specialized integrator
+                if hasattr(asr_processor, 'process_audio'):
+                    # Use the specialized 4-model pipeline
+                    enhanced_result = asr_processor.process_audio(audio_data.file_path)  # type: ignore
+                    # Extract the transcription part for the traditional pipeline
+                    transcription = enhanced_result.transcription
+                    print("✅ Used SpecializedASRIntegrator (4-model pipeline)")
+                else:
+                    # Use traditional ASR processor
+                    transcription = asr_processor.transcribe(audio_data.file_path)  # type: ignore
             except Exception as e:
                 self.state_manager.fail_step(state, step_name, str(e))
                 raise
         
         try:
+            # Save transcription (for backward compatibility)
             self.state_manager.save_transcription(state, transcription)
+            
+            # Save enhanced result if available
+            if enhanced_result is not None:
+                self.state_manager.save_enhanced_transcription(state, enhanced_result)
+                print("✅ Enhanced transcription result saved")
+            
             self.state_manager.complete_step(state, step_name)
             print(f"✅ Transcription completed: {len(transcription.text)} characters, {transcription.confidence:.2f} confidence")
             return transcription
@@ -437,6 +470,64 @@ class PipelineOrchestrator:
         except Exception as e:
             self.state_manager.fail_step(state, step_name, str(e))
             raise
+    
+    def _convert_analysis_to_markdown(self, state: PipelineState, analysis: Optional[Any]) -> Optional[str]:
+        """Convert analysis results to markdown format."""
+        step_name = "markdown_conversion"
+        
+        if self.state_manager.is_step_completed(state, step_name):
+            print("⏭️  Markdown conversion already completed")
+            return self._load_markdown_result(state)
+        
+        if not analysis:
+            print("⚠️  No analysis available, skipping markdown conversion")
+            self.state_manager.complete_step(state, step_name)
+            return None
+            
+        if not ANALYSIS_AVAILABLE:
+            print("⚠️  Analysis components not available, skipping markdown conversion")
+            self.state_manager.complete_step(state, step_name)
+            return None
+        
+        print("📝 Converting analysis to markdown...")
+        self.state_manager.update_step(state, step_name)
+        
+        try:
+            # Convert analysis to dictionary format if it's an object
+            if hasattr(analysis, '__dict__'):
+                analysis_dict = self._analysis_to_dict(analysis)
+            else:
+                analysis_dict = analysis
+            
+            # Ensure we have a valid dictionary
+            if not isinstance(analysis_dict, dict):
+                print("⚠️  Invalid analysis data format, skipping markdown conversion")
+                self.state_manager.complete_step(state, step_name)
+                return None
+            
+            # Create markdown converter and save markdown file
+            converter = MarkdownConverter()
+            output_dir = Path(state.output_dir)
+            markdown_path = output_dir / "analysis.md"
+            converter.save_analysis_markdown(analysis_dict, markdown_path)
+            
+            self.state_manager.complete_step(state, step_name)
+            print("✅ Markdown conversion completed")
+            print(f"   📄 Saved to: {markdown_path}")
+            
+            return str(markdown_path)
+            
+        except Exception as e:
+            self.state_manager.fail_step(state, step_name, str(e))
+            raise
+
+    def _load_markdown_result(self, state: PipelineState) -> Optional[str]:
+        """Load markdown result from saved file."""
+        output_dir = Path(state.output_dir)
+        markdown_path = output_dir / "analysis.md"
+        if markdown_path.exists():
+            return str(markdown_path)
+        return None
     
     def _finalize_results(self, state: PipelineState, results: Dict[str, Any]) -> Dict[str, Any]:
         """Finalize and save complete results."""
@@ -690,7 +781,16 @@ class PipelineOrchestrator:
         """Clean up intermediate files."""
         self.state_manager.cleanup_intermediate_files(keep_final_result)
     
-    def _get_asr_processor(self, language: str):
+    def _is_using_specialized_asr(self, language: str) -> bool:
+        """Check if we'll be using SpecializedASRIntegrator for the given language."""
+        if not ASR_PROCESSOR_AVAILABLE:
+            return False
+        
+        # Check what processor would be returned
+        asr_processor = self._get_asr_processor(language)
+        return hasattr(asr_processor, 'process_audio')
+
+    def _get_asr_processor(self, language: str) -> Optional[Union['WhisperProcessor', 'SpecializedASRIntegrator']]:
         """Get appropriate ASR processor based on language.
         
         Args:
@@ -701,23 +801,23 @@ class PipelineOrchestrator:
         """
         if not ASR_PROCESSOR_AVAILABLE:
             return None
-            
-        # Use FunASR for Chinese languages, Whisper for others
-        if language.lower() in ['zh', 'zh-cn', 'zh-tw', 'chinese', 'mandarin']:
+        
+        # Language-aware ASR processor selection
+        language = language.lower()
+        
+        # Use SpecializedASRIntegrator (FunASR-based) for Chinese and related languages
+        if language in ['zh', 'zh-cn', 'zh-tw', 'chinese', 'mandarin']:
             try:
-                print("🇨🇳 Using FunASR processor for Chinese language")
-                # Use Chinese-specific FunASR model with better punctuation
-                return FunASRProcessor(
-                    model_path="iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
-                    language="zn",  # FunASR Chinese language code
-                    device="auto"   # Auto-select best available device (MPS/CUDA/CPU)
-                )
+                print("🔧 Using SpecializedASRIntegrator (4-model pipeline) for Chinese")
+                # The specialized integrator handles VAD, ASR, punctuation, and diarization
+                return SpecializedASRIntegrator(device="auto")
             except Exception as e:
-                print(f"⚠️  Could not initialize FunASR processor: {e}")
+                print(f"⚠️  Could not initialize SpecializedASRIntegrator: {e}")
                 print("🔄 Falling back to Whisper processor")
-                return WhisperProcessor(language="zh")
-        else:
-            print("🌍 Using Whisper processor for non-Chinese language")
+        
+        # Use Whisper for English and other languages (more robust for long audio)
+        print(f"🔧 Using Whisper processor for language: {language}")
+        try:
             # Map common language codes for Whisper
             whisper_lang = language.lower()
             if whisper_lang in ['en', 'english']:
@@ -726,10 +826,15 @@ class PipelineOrchestrator:
                 whisper_lang = "ja"
             elif whisper_lang in ['ko', 'korean']:
                 whisper_lang = "ko"
+            elif whisper_lang in ['zh', 'zh-cn', 'zh-tw', 'chinese', 'mandarin']:
+                whisper_lang = "zh"
             else:
                 whisper_lang = None  # Let Whisper auto-detect
                 
             return WhisperProcessor(language=whisper_lang)
+        except Exception as e:
+            print(f"⚠️  Could not initialize Whisper processor: {e}")
+            return None
     
     def _diarization_to_dict(self, diarization: DiarizationResult) -> Dict[str, Any]:
         """Convert DiarizationResult to dictionary."""
@@ -763,5 +868,4 @@ class PipelineOrchestrator:
     
     def _load_enhanced_transcription_result(self, state: PipelineState) -> Optional[EnhancedTranscriptionResult]:
         """Load enhanced transcription result from saved file."""
-        # TODO: Implement when state manager supports enhanced transcription
-        return None
+        return self.state_manager.load_enhanced_transcription(state)

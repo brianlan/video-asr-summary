@@ -6,6 +6,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
+# Import new specialized types
+from .vad_types import VADProcessor, VADResult, VADSegment
+from .punctuation_types import PunctuationProcessor, PunctuationResult
+
 if TYPE_CHECKING:
     from video_asr_summary.analysis import AnalysisResult
 
@@ -73,6 +77,28 @@ class EnhancedTranscriptionResult:
     # where 'speaker' is Optional[str] and 'confidence' is float (0.0-1.0)
     speaker_attributed_segments: list[Dict[str, Any]]  # Segments with speaker info
     processing_time_seconds: Optional[float] = None
+
+    def get_speaker_attributed_transcription_segments(self) -> list[Dict[str, Any]]:
+        """Get transcription segments with speaker attribution merged.
+
+        Returns:
+            List of segments where each segment includes speaker information
+        """
+        return self.speaker_attributed_segments.copy()
+
+    def to_speaker_attributed_transcription(self) -> TranscriptionResult:
+        """Create a TranscriptionResult with speaker-attributed segments.
+
+        Returns:
+            TranscriptionResult where segments include speaker information
+        """
+        return TranscriptionResult(
+            text=self.transcription.text,
+            confidence=self.transcription.confidence,
+            segments=self.speaker_attributed_segments.copy(),
+            language=self.transcription.language,
+            processing_time_seconds=self.transcription.processing_time_seconds,
+        )
 
 
 @dataclass
@@ -160,3 +186,31 @@ class Pipeline(ABC):
     def process(self, video_path: Path) -> PipelineResult:
         """Process video through the complete pipeline."""
         pass
+
+
+# Export all public types and interfaces
+__all__ = [
+    # Data classes
+    "VideoInfo",
+    "AudioData",
+    "SpeakerSegment",
+    "DiarizationResult",
+    "TranscriptionResult",
+    "EnhancedTranscriptionResult",
+    "SummaryResult",
+    "PipelineResult",
+    # VAD types
+    "VADProcessor",
+    "VADResult",
+    "VADSegment",
+    # Punctuation types
+    "PunctuationProcessor",
+    "PunctuationResult",
+    # Abstract processors
+    "VideoProcessor",
+    "ASRProcessor",
+    "SpeakerDiarizationProcessor",
+    "ASRDiarizationIntegrator",
+    "SummarizationProcessor",
+    "Pipeline",
+]

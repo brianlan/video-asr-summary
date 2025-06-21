@@ -178,8 +178,8 @@ class TestOpenAICompatibleClient:
         """Test client initialization with environment variable."""
         client = OpenAICompatibleClient()
         assert client.api_key == 'test-token'
-        assert client.model == 'gemini-2.5-pro-preview-03-25'  # Updated to match actual default
-        assert client.base_url == 'https://openai.newbotai.cn/v1'  # Updated to match actual default
+        assert client.model == 'deepseek-chat'  # Updated to match new default
+        assert client.base_url == 'https://api.deepseek.com/v1'  # Updated to match new default
     
     def test_client_initialization_with_params(self):
         """Test client initialization with parameters."""
