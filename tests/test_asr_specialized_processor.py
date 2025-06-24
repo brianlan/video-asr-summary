@@ -83,7 +83,7 @@ class TestFunASRSpecializedProcessor:
             # Verify model was initialized correctly
             mock_automodel_class.assert_called_once_with(
                 model="iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
-                revision="v2.0.4",
+                model_revision="v2.0.4",
                 device="mps",
                 disable_update=True,
                 trust_remote_code=False,

@@ -85,7 +85,7 @@ class FunASRPunctuationProcessor(PunctuationProcessor):
             # Punctuation model configuration
             model_config = {
                 "model": self.model_path,
-                "revision": self.model_revision,
+                "model_revision": self.model_revision,
                 "device": self.device,
                 "disable_update": True,
                 "trust_remote_code": False,

@@ -146,7 +146,7 @@ class TestFunASRVADProcessor:
             # Verify model was initialized correctly
             mock_automodel_class.assert_called_once_with(
                 model="iic/speech_fsmn_vad_zh-cn-16k-common-pytorch",
-                revision="v2.0.4",
+                model_revision="v2.0.4",
                 device="cpu",
                 disable_update=True,
                 trust_remote_code=False,
