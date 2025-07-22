@@ -17,3 +17,4 @@
   - Use version control well: Descriptive commit messages. Small commits (1 change → 1 commit).
 3. Code Quality
   - Follow **KISS**, **DRY**, **SOLID**, **YAGNI**.
+  - Apply meaningful code comments; avoid explaining *what*, explain *why*.

@@ -233,3 +233,90 @@ class TestFunASRSpecializedProcessor:
             
             # Should only be called once
             mock_automodel_class.assert_called_once()
+
+    @patch('pathlib.Path.exists')
+    @patch('time.time')
+    @patch('video_asr_summary.asr.funasr_specialized_processor.logger')
+    def test_transcribe_with_chunked_processing_large_file(self, mock_logger, mock_time, mock_exists):
+        """Test chunked processing for large audio files to prevent OOM."""
+        # Setup mocks
+        mock_exists.return_value = True
+        mock_time.side_effect = [0.0, 2.5]  # start, end
+        
+        # Mock FunASR model to simulate chunked processing 
+        mock_model_instance = Mock()
+        
+        # Simulate chunked processing with side_effect for multiple calls
+        chunk_results = [
+            [{
+                "text": "第 一 段 ， 这 是 测 试 。",
+                "timestamp": [
+                    [0, 200], [200, 400], [400, 600], [600, 800], [800, 1000],
+                    [1000, 1200], [1200, 1400], [1400, 1600], [1600, 1800]
+                ]
+            }],
+            [{
+                "text": "第 二 段 ， 继 续 测 试 。",
+                "timestamp": [
+                    [2000, 2200], [2200, 2400], [2400, 2600], [2600, 2800], 
+                    [2800, 3000], [3000, 3200], [3200, 3400], [3400, 3600]
+                ]
+            }]
+        ]
+        
+        # Mock generate method to return results for different chunks
+        mock_model_instance.generate.side_effect = chunk_results
+        
+        with patch.object(FunASRSpecializedProcessor, '_get_optimal_device', return_value="mps"):
+            processor = FunASRSpecializedProcessor()
+            processor._model = mock_model_instance
+            
+            audio_path = Path("/test/large_audio.wav")
+            
+            # Call chunked processing
+            result = processor.transcribe_chunked(audio_path, chunk_duration_seconds=10.0)
+            
+            # Verify chunked result
+            assert isinstance(result, TranscriptionResult)
+            # The text should combine both chunks properly (exact text from implementation)
+            expected_text = "第一段，这是测试。第二段，继续测试"
+            assert result.text == expected_text
+            assert len(result.segments) > 0
+            assert result.processing_time_seconds == 2.5
+            
+            # Verify generate was called multiple times (once per chunk)
+            assert mock_model_instance.generate.call_count == 2
+            
+            # Verify chunk_size parameter was used in the calls
+            for call in mock_model_instance.generate.call_args_list:
+                assert 'chunk_size' in call.kwargs
+                assert 'is_final' in call.kwargs
+
+    @patch('pathlib.Path.exists')
+    def test_transcribe_chunked_parameters(self, mock_exists):
+        """Test that chunked processing uses correct FunASR parameters."""
+        mock_exists.return_value = True
+        
+        mock_model_instance = Mock()
+        mock_model_instance.generate.return_value = [{
+            "text": "测 试",
+            "timestamp": [[0, 500], [500, 1000]]
+        }]
+        
+        with patch.object(FunASRSpecializedProcessor, '_get_optimal_device', return_value="mps"):
+            processor = FunASRSpecializedProcessor()
+            processor._model = mock_model_instance
+            
+            audio_path = Path("/test/audio.wav")
+            
+            # This should fail initially because chunked processing is not implemented
+            processor.transcribe_chunked(
+                audio_path, 
+                chunk_duration_seconds=5.0,
+                chunk_overlap_seconds=0.5
+            )
+            
+            # Verify that generate was called with chunking parameters
+            call_args = mock_model_instance.generate.call_args[1]
+            assert 'chunk_size' in call_args  # Should have chunk_size parameter
+            assert 'is_final' in call_args  # Should have is_final parameter
